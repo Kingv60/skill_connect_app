@@ -56,7 +56,6 @@ class _AvatarOnboardingPageState extends State<AvatarOnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
 
 
     return Scaffold(

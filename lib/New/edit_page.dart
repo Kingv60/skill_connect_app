@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/svg.dart';
+
 import 'package:image_picker/image_picker.dart';
+import 'package:skillconnect/Constants/constants.dart';
 import '../Provider/profile_provider.dart';
 import '../Services/api-service.dart';
 
@@ -103,16 +104,6 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     setState(() => isLoading = true);
 
     try {
-      final api = ApiService();
-
-      final data = await api.updateProfile(
-        name: nameController.text.trim(),
-        username: usernameController.text.trim(),
-        bio: bioController.text.trim(),
-        role: roleController.text.trim(),
-        skills: skills.join(","),
-        avatarFile: selectedImage,
-      );
       await ref.read(profileProvider.notifier).loadProfile();
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -132,11 +123,27 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
-      appBar: AppBar(
+      appBar: AppBar(automaticallyImplyLeading: false,
         backgroundColor: const Color(0xFF000000),
         elevation: 0,
         title: const Text("Edit Profile", style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
+        leading: GestureDetector(
+          onTap: () {
+            Navigator.pop(context);
+          },
+          child: Container(
+            margin: const EdgeInsets.all(10),
+            height: 30,
+            width: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(width: 1, color: Colors.white),
+            ),
+            child: const Icon(Icons.close, color: Colors.white, size: 20),
+          ),
+        ),
+
         actions: [
           TextButton(
             onPressed: saveProfile,
@@ -300,24 +307,7 @@ Widget buildAvatar({
     ),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(size / 2),
-      child: localFile != null
-          ? Image.file(
-        localFile,
-        fit: BoxFit.cover,
-      )
-          : (avatarUrl != null && avatarUrl.isNotEmpty
-          ? (avatarUrl.toLowerCase().endsWith(".svg")
-          ? SvgPicture.network(
-        avatarUrl,
-        placeholderBuilder: (context) =>
-        const Center(child: CircularProgressIndicator()),
-        fit: BoxFit.cover,
-      )
-          : Image.network(
-        "http://localhost:8000$avatarUrl",
-        fit: BoxFit.cover,
-      ))
-          : const Icon(Icons.person, size: 50, color: Colors.white)),
+      child: AppAvatar(url: avatarUrl)
     ),
   );
 }

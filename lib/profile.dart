@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:skillconnect/New/All_video_of_course.dart';
 import 'package:skillconnect/New/video_upload_page.dart';
 
+import 'Constants/constants.dart';
 import 'New/VideoPlayfor_course.dart';
 import 'New/edit_page.dart';
 import 'Provider/profile_provider.dart';
@@ -44,6 +45,66 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    /// Widget for the Recent Videos Tab
+    /// Widget for the Recent Videos Tab
+    Widget _buildRecentVideosTab() {
+      return FutureBuilder<List<dynamic>>(
+        // Use the new API function we created
+        future: ApiService().getAllVideosLatest(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.blue));
+          }
+
+          if (snapshot.hasError) {
+            return const Center(child: Text("Error loading videos", style: TextStyle(color: Colors.red)));
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.video_library_outlined, color: Colors.white24, size: 50),
+                  SizedBox(height: 10),
+                  Text("No videos yet", style: TextStyle(color: Colors.white54)),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: snapshot.data!.length,
+            itemBuilder: (context, index) => VideoListItem(video: snapshot.data![index]),
+          );
+        },
+      );
+    }
+
+    /// Widget for the Playlist/Courses Tab
+    Widget _buildPlaylistCoursesTab() {
+      final profile = ref.watch(profileProvider);
+      return FutureBuilder<List<dynamic>>(
+        future: ApiService().getMyCreatedCourses(), // Calling your new API function
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return const Center(child: Text("No courses created yet", style: TextStyle(color: Colors.white54)));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: snapshot.data!.length,
+            itemBuilder: (context, index) {
+              final course = snapshot.data![index];
+              return CourseListItem(course: course, profile: profile,);
+            },
+          );
+        },
+      );
+    }
     final profile = ref.watch(profileProvider);
 
     if (profile == null) {
@@ -70,8 +131,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     children: [
                       GestureDetector(
                         onTap: () => Navigator.pop(context),
-                        child: Icon(Icons.arrow_back_ios_new_rounded,
-                            color: textColor, size: 20),
+                        child: Container(height: 30,width: 30,decoration: BoxDecoration(shape: BoxShape.circle,border: Border.all(width: 1,color: Colors.white)),child: const Icon(Icons.close, color: Colors.white, size: 20)),
                       ),
                       Text(
                         profile.username,
@@ -104,17 +164,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(25),
-                          child: profile.avatarUrl.endsWith(".svg")
-                              ? SvgPicture.network(
-                            profile.avatarUrl,
-                            placeholderBuilder: (context) =>
-                            const CircularProgressIndicator(),
-                            fit: BoxFit.cover,
-                          )
-                              : Image.network(
-                            "http://localhost:8000${profile.avatarUrl}",
-                            fit: BoxFit.cover,
-                          )
+                          child:  AppAvatar(url: profile.avatarUrl),
                         ),
                       ),
                       const SizedBox(width: 20),
@@ -216,33 +266,39 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   ),
                 ),
 
-                const SizedBox(height: 10),
 
-                Expanded(
-                  child: FutureBuilder<List<dynamic>>(
-                    future: ApiService().getMyFeed(), // Your class-top token is used here
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                DefaultTabController(
+                  length: 2,
+                  child: Expanded(
+                    child: Column(
+                      children: [
 
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const Center(
-                          child: Text("No videos yet", style: TextStyle(color: Colors.white54)),
-                        );
-                      }
+                        /// TAB BAR
+                        const TabBar(
+                          indicatorColor: Colors.blue,
+                          labelColor: Colors.white,
+                          unselectedLabelColor: Colors.white54,
+                          tabs: [
+                            Tab(text: "Recent"),
+                            Tab(text: "Playlist"),
+                          ],
+                        ),
 
-                      // YouTube-style Grid
-                      // Change this section inside your Expanded(child: FutureBuilder(...))
-                      return ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: snapshot.data!.length,
-                        itemBuilder: (context, index) {
-                          final video = snapshot.data![index];
-                          return VideoListItem(video: video); // Use the new List Item widget
-                        },
-                      );
-                    },
+                        /// TAB CONTENT
+                        /// TAB CONTENT
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              /// 1. RECENT TAB (Videos)
+                              _buildRecentVideosTab(),
+
+                              /// 2. PLAYLIST TAB (Courses) - UPDATED
+                              _buildPlaylistCoursesTab(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -320,16 +376,21 @@ class VideoListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Construct URLs - adjust baseUrl as per your ApiService
-    final String thumbUrl = video['thumbnail_url'] ?? "";
-    final String videoUrl = video['media_url'] ?? "";
-    final String videoTitle = video['caption'] ?? "Untitled Video";
+    // 1. Correct the Keys to match your "all-latest" JSON
+    final String thumbUrl = "$baseUrlImage${video['thumbnail_url'] ?? ""}";
+    final String videoUrl = "$baseUrlImage${video['video_url'] ?? ""}";
+    final String videoTitle = video['name'] ?? "Untitled Video"; // Changed from 'caption' to 'name'
 
-    // Format Date (Assuming backend returns 'createdAt')
+    // 2. Format Date logic
     String uploadTime = "Just now";
-    if (video['createdAt'] != null) {
-      DateTime dt = DateTime.parse(video['createdAt']);
-      uploadTime = "${dt.day}/${dt.month}/${dt.year}";
+    if (video['created_at'] != null) { // Match 'created_at' from JSON
+      try {
+        DateTime dt = DateTime.parse(video['created_at']);
+        // Format as "Mar 23, 2026" or similar
+        uploadTime = "${dt.day}/${dt.month}/${dt.year}";
+      } catch (e) {
+        uploadTime = "Recent";
+      }
     }
 
     return GestureDetector(
@@ -345,20 +406,18 @@ class VideoListItem extends StatelessWidget {
         );
       },
       child: Container(
-
         margin: const EdgeInsets.only(bottom: 16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// --- THUMBNAIL (LEFT) ---
+            /// --- THUMBNAIL ---
             Stack(
               alignment: Alignment.center,
               children: [
                 Container(
-                  width: 120, // Fixed width for thumbnail
-                  height: 85,
+                  width: 130, // Slightly wider for modern look
+                  height: 80,
                   decoration: BoxDecoration(
-                    border: Border.all(width: 1,color: Colors.white),
                     borderRadius: BorderRadius.circular(10),
                     image: DecorationImage(
                       image: NetworkImage(thumbUrl),
@@ -366,13 +425,22 @@ class VideoListItem extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Icon(Icons.play_circle_fill, color: Colors.white70, size: 30),
+                // Overlay to show it's a video
+                Container(
+                  width: 130,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 35),
+                ),
               ],
             ),
 
             const SizedBox(width: 12),
 
-            /// --- DETAILS (RIGHT COLUMN) ---
+            /// --- DETAILS ---
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,25 +449,129 @@ class VideoListItem extends StatelessWidget {
                     videoTitle,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    "Uploaded: $uploadTime",
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
-                      fontSize: 12,
-                    ),
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time, color: Colors.white38, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        uploadTime,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.5),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class CourseListItem extends StatelessWidget {
+  final dynamic course;
+  final dynamic profile;
+  const CourseListItem({super.key, required this.course, required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    // Extracting data from the API Map
+    final int courseId = course['course_id'] ?? 0; // Use course_id from your API
+    final String title = course['title'] ?? "Untitled Course";
+    final String thumbUrl = baseUrlImage + (course['thumbnail_url'] ?? "");
+    final String level = course['level'] ?? "Beginner";
+    final String language = course['language'] ?? "English";
+
+    return GestureDetector(
+      onTap: () {
+        // Navigate to the details page passing the courseId
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CourseVideoPage(profile: profile, course_id: courseId,),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            /// --- COURSE THUMBNAIL ---
+            Container(
+              width: 100,
+              height: 70,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                image: DecorationImage(
+                  image: NetworkImage(thumbUrl),
+                  fit: BoxFit.cover,
+                ),
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.black26,
+                ),
+                child: const Icon(Icons.playlist_play, color: Colors.white, size: 30),
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            /// --- COURSE INFO ---
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      _infoChip(level, Colors.orangeAccent),
+                      const SizedBox(width: 8),
+                      _infoChip(language, Colors.blueAccent),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border.all(color: color.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
       ),
     );
   }

@@ -1,10 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:skillconnect/Model/globalFeed_model.dart';
 
+import '../Model/Project_Request_get.dart';
 import '../Model/chatModel.dart';
 import '../Model/message_model.dart';
+import '../Model/my_project_model.dart';
+import '../Model/single_project_model.dart';
 import '../Model/startConservation.dart';
 import 'package:http_parser/http_parser.dart';
 
@@ -14,7 +19,7 @@ class ApiService {
   /// ===========================
   /// 🔹 BASE CONFIG
   /// ===========================
-  static const String baseUrl = "http://localhost:8000/api";
+  static const String baseUrl = "http://10.57.75.55:8000/api";
 
   static String? token;
   static int? userId;
@@ -382,64 +387,159 @@ class ApiService {
   /// ===========================
   /// 11.. UPLOAD VIDEO FOR COURSE
   /// ===========================
-  Future<bool> uploadMedia({
-    required File mediaFile,
-    File? thumbnailFile,
-    required String caption,
+  /// ===========================
+  /// 17.. UPLOAD VIDEO TO COURSE
+  /// ===========================
+  Future<bool> uploadVideo({
+    required File videoFile,
+    required File thumbnailFile, // Added this parameter
+    required String title,
+    String? description,
+    String? courseId,
     required Function(double progress) onProgress,
   }) async {
+    final url = Uri.parse("$baseUrl/videos/");
+    print("🚀 UPLOAD VIDEO REQUEST: $url");
+
     try {
-      // 1. Get the token exactly like your search function
+      var request = http.MultipartRequest('POST', url);
 
+      // --- Headers ---
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
 
-      final url = Uri.parse("$baseUrl/media/upload");
+      // --- Text Fields ---
+      request.fields['name'] = title;
+      request.fields['description'] = description ?? "";
+      request.fields['course_id'] = (courseId == null || courseId.isEmpty) ? "0" : courseId;
 
-      // 2. Initialize the progress-aware request
-      var request = MultipartRequestWithProgress(
-        'POST',
+      // --- Video File ---
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'video', // Matches backend req.files['video']
+          videoFile.path,
+        ),
+      );
+
+      // --- NEW: Thumbnail File ---
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'thumbnail', // Matches backend req.files['thumbnail']
+          thumbnailFile.path,
+        ),
+      );
+
+      // --- Send Request ---
+      var streamedResponse = await request.send();
+
+      // Logic for progress tracking (Simplified)
+      // Note: To get real progress, you'd need a custom MultipartRequest class,
+      // but we can simulate completion here for now.
+      onProgress(1.0);
+
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print("STATUS CODE: ${response.statusCode}");
+      print("RESPONSE BODY: ${response.body}");
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print("UPLOAD VIDEO ERROR: $e");
+      return false;
+    }
+  }
+
+  /// Video by time
+  Future<List<dynamic>> getAllVideosLatest() async {
+    final url = Uri.parse("$baseUrl/videos/all-latest");
+    print("📡 Fetching Latest Videos: $url");
+
+    try {
+      final response = await http.get(
         url,
-        onProgress: (bytes, total) {
-          onProgress(bytes / total);
+        headers: {
+          "Content-Type": "application/json",
+          // Ensure token is not null before sending
+          if (token != null) "Authorization": "Bearer $token",
         },
       );
 
-      // 3. Apply your Header Logic
-      request.headers.addAll({
-        "Accept": "application/json",
-        if (token != null) "Authorization": "Bearer $token",
-      });
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
 
-      // 4. Add Fields
-      request.fields['caption'] = caption;
-
-      // 5. Add Media File
-      String ext = mediaFile.path.split('.').last.toLowerCase();
-      request.files.add(await http.MultipartFile.fromPath(
-        'media',
-        mediaFile.path,
-        contentType: MediaType(ext == 'mp4' ? 'video' : 'image', ext),
-      ));
-
-      // 6. Add Thumbnail (If exists)
-      if (thumbnailFile != null) {
-        request.files.add(await http.MultipartFile.fromPath(
-          'thumbnail',
-          thumbnailFile.path,
-          contentType: MediaType('image', 'jpeg'),
-        ));
+        // We extract the "videos" key from your JSON response
+        if (data['success'] == true) {
+          return data['videos'] ?? [];
+        } else {
+          return [];
+        }
+      } else {
+        print("❌ Server Error: ${response.statusCode}");
+        return [];
       }
-
-      // 7. Send and Print Response (like your search function)
-      print("API SEARCH (Upload): $url");
-      var streamedResponse = await request.send();
-      var response = await http.Response.fromStream(streamedResponse);
-
-      print("API RESPONSE: ${response.body}");
-
-      return response.statusCode == 201;
     } catch (e) {
-      print("UPLOAD ERROR: $e");
-      return false;
+      print("⚠️ Connection Error: $e");
+      return [];
+    }
+  }
+
+  /// Ecroll Api
+  Future<Map<String, dynamic>> enrollInCourse(int courseId) async {
+    final url = Uri.parse("$baseUrl/courses/enroll");
+    print("📝 ENROLLING IN COURSE: $courseId");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token", // Ensure token is set in your service
+        },
+        body: jsonEncode({
+          "course_id": courseId,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {"success": true, "message": data['message'] ?? "Enrolled successfully!"};
+      } else {
+        return {"success": false, "message": data['message'] ?? "Failed to enroll."};
+      }
+    } catch (e) {
+      print("❌ ENROLL ERROR: $e");
+      return {"success": false, "message": "Connection error."};
+    }
+  }
+
+
+  /// Get all Enrolled course
+  Future<List<dynamic>> getMyJoinedCourses() async {
+    final url = Uri.parse("$baseUrl/courses/my-courses/list");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        // Direct decode as a List because your JSON starts with [
+        final List<dynamic> decodedList = jsonDecode(response.body);
+        return decodedList;
+      } else {
+        print("❌ Server Error: ${response.statusCode}");
+        return [];
+      }
+    } catch (e) {
+      print("⚠️ API Connection Error: $e");
+      return [];
     }
   }
 
@@ -563,6 +663,346 @@ class ApiService {
       return [];
     } catch (e) {
       return [];
+    }
+  }
+
+  /// ===========================
+  /// 14.. Project Create
+  /// ===========================
+
+  Future<bool> createProject({
+    required String title,
+    required String description,
+    required List<String> techStack,
+    required int membersCount,
+  }) async {
+
+    final url = Uri.parse("$baseUrl/projects/create");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "title": title,
+          "description": description,
+          "tech_stack": techStack,
+          "members_count": membersCount,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      } else {
+        print("Error: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Exception: $e");
+      return false;
+    }
+  }
+
+
+  Future<List<MyProject>> getMyProjects() async {
+
+    final url = Uri.parse("$baseUrl/projects/my-projects");
+
+    try {
+
+      final response = await http.get(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+      );
+
+      print("URL: $url");
+      print("STATUS CODE: ${response.statusCode}");
+      print("BODY: ${response.body}");
+
+      if (response.statusCode == 200) {
+
+        List data = jsonDecode(response.body);
+
+        return data.map((e) => MyProject.fromJson(e)).toList();
+
+      } else {
+        throw Exception("Failed to load projects ${response.statusCode}");
+      }
+
+    } catch (e) {
+      print("API ERROR: $e");
+      rethrow;
+    }
+  }
+
+  Future<List<JoinRequest>> fetchOwnerRequests() async {
+    final url = Uri.parse('$baseUrl/projects/owner-requests');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // If required
+        },
+      );
+
+      if (response.statusCode == 200) {
+        List<dynamic> body = jsonDecode(response.body);
+        return body.map((json) => JoinRequest.fromJson(json)).toList();
+      } else {
+        print("Server Error Code: ${response.statusCode}");
+        print("Server Response: ${response.body}");
+        throw Exception("Failed to load requests: ${response.statusCode}");
+
+      }
+    } catch (e) {
+      print("Error fetching requests: $e");
+      return [];
+    }
+  }
+
+  // Inside your ApiService class
+  Future<bool> updateRequestStatus(int interactionId, String status) async {
+    // Use 10.0.2.2 for Android Emulator, or localhost for iOS/Web
+    final url = Uri.parse('$baseUrl/projects/request/$interactionId');
+
+    // Get your token from wherever you store it (SharedPreferences, etc.)
+
+
+    try {
+      final response = await http.patch(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'status': status}), // status is 'accepted' or 'rejected'
+      );
+      print("Response Status Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
+      print("--- API CALL END ---");
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print("API Error: $e");
+      return false;
+    }
+  }
+
+
+  Future<List<GlobalFeed>> fetchGlobalFeed() async {
+    final url = Uri.parse('$baseUrl/projects/feed');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        List<dynamic> data = jsonDecode(response.body);
+        // This will now work because MyProject.fromJson handles username/avatarUrl
+        return data.map((json) => GlobalFeed.fromJson(json)).toList();
+      } else {
+        throw Exception("Failed to load feed");
+      }
+    } catch (e) {
+      print("Feed Error: $e");
+      return [];
+    }
+  }
+
+  Future<SingleProjectGet?> getProjectDetails(int id) async {
+    final url = Uri.parse('$baseUrl/projects/details/$id');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // Passing the token here
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        return SingleProjectGet.fromJson(data);
+      } else {
+        print("Error: ${response.statusCode} - ${response.body}");
+        return null;
+      }
+    } catch (e) {
+      print("Exception caught: $e");
+      return null;
+    }
+  }
+
+
+
+  /// Create Course
+  /// ===========================
+  /// 15.. CREATE COURSE
+  /// ===========================
+  Future<bool> createCourse({
+    required String title,
+    required String description,
+    required String level,
+    required String language,
+    required File thumbnail,
+  }) async {
+    final url = Uri.parse("$baseUrl/courses/create");
+    print("🚀 CREATE COURSE REQUEST: $url");
+
+    try {
+      var request = http.MultipartRequest('POST', url);
+
+      // --- Headers ---
+      // Using your class-level token variable
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      // --- Text Fields ---
+      request.fields['title'] = title;
+      request.fields['description'] = description;
+      request.fields['level'] = level;
+      request.fields['language'] = language;
+
+      // --- File Field (Optimized) ---
+      // Using fromPath is cleaner than manual ByteStreams for local files
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'thumbnail',
+          thumbnail.path,
+          contentType: MediaType('image', thumbnail.path.split('.').last),
+        ),
+      );
+
+      // --- Send Request ---
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print("STATUS CODE: ${response.statusCode}");
+      print("RESPONSE BODY: ${response.body}");
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print("✅ Course Created Successfully");
+        return true;
+      } else {
+        print("❌ Failed to create course: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("CREATE COURSE ERROR: $e");
+      return false;
+    }
+  }
+
+  ///Get use specific Courses
+  /// ===========================
+  /// 16.. GET MY CREATED COURSES
+  /// ===========================
+  Future<List<dynamic>> getMyCreatedCourses() async {
+    final url = Uri.parse("$baseUrl/courses/my-created-courses");
+    print("🚀 GET MY COURSES REQUEST: $url");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      print("STATUS CODE: ${response.statusCode}");
+      print("RESPONSE BODY: ${response.body}");
+
+      if (response.statusCode == 200) {
+        // 1. Decode the body into a Map
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+
+        // 2. Extract the 'courses' list from the Map
+        // If 'courses' is null or missing, return an empty list []
+        return responseData['courses'] ?? [];
+      } else {
+        print("❌ Failed to fetch my courses: ${response.body}");
+        return [];
+      }
+    } catch (e) {
+      print("GET MY COURSES ERROR: $e");
+      return [];
+    }
+  }
+
+  /// Get video by course id
+  Future<List<dynamic>> getVideosByCourse(int courseId) async {
+    final url = Uri.parse("$baseUrl/videos/course/$courseId");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        // Extracts the 'videos' array from your JSON response
+        return data['videos'] ?? [];
+      } else {
+        return [];
+      }
+    } catch (e) {
+      debugPrint("API Error fetching course videos: $e");
+      return [];
+    }
+  }
+
+  ///
+  Future<bool> sendJoinRequest({
+    required int projectId,
+    required String message,
+  }) async {
+    final url = Uri.parse('$baseUrl/projects/request');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          "project_id": projectId,
+          "message": message,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Success!
+        return true;
+      } else {
+        print("Request failed: ${response.body}");
+        return false;
+      }
+    } catch (e) {
+      print("Error sending request: $e");
+      return false;
     }
   }
 }

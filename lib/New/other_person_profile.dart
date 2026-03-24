@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:skillconnect/New/video_upload_page.dart';
+import 'package:skillconnect/Constants/constants.dart';
 import '../Model/chatModel.dart';
 import '../Provider/chat_provider.dart';
 import '../Provider/search_provider.dart';
@@ -41,13 +41,14 @@ class _OtherPersonProfileState extends ConsumerState<OtherPersonProfile> {
 
         if (existingChat.conversationId != -1) {
           // ✅ SUCCESS: Navigate to existing chat
-          Navigator.push(
+          Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (_) => ChatPage(
                 name: existingChat.name,
                 image: existingChat.avatar,
                 conversationId: existingChat.conversationId,
+                receiverId: widget.userId,
               ),
             ),
           );
@@ -79,6 +80,7 @@ class _OtherPersonProfileState extends ConsumerState<OtherPersonProfile> {
             name: name,
             image: avatar,
             conversationId: newId,
+            receiverId: widget.userId,
           ),
         ),
       );
@@ -140,12 +142,12 @@ class _OtherPersonProfileState extends ConsumerState<OtherPersonProfile> {
 
 
 
-    print("🌐 Final Avatar URL: $url");
+
 
     return ClipOval(
       child: url.toLowerCase().endsWith(".svg")
           ? SvgPicture.network(
-        url,
+        baseUrlImage+url,
         fit: BoxFit.cover,
         placeholderBuilder: (context) => const Padding(
           padding: EdgeInsets.all(20.0),
@@ -153,7 +155,7 @@ class _OtherPersonProfileState extends ConsumerState<OtherPersonProfile> {
         ),
       )
           : Image.network(
-        url,
+        baseUrlImage+url,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
           return const Icon(Icons.person, color: Colors.white24, size: 40);

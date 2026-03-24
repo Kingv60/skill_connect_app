@@ -1,7 +1,7 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import 'package:flutter_riverpod/legacy.dart';
 import '../Services/api-service.dart';
-import '../Model/chatModel.dart';
+
 
 final chatSearchProvider = StateNotifierProvider<ChatSearchNotifier, List<dynamic>>((ref) {
   return ChatSearchNotifier();
@@ -27,6 +27,6 @@ class ChatSearchNotifier extends StateNotifier<List<dynamic>> {
   // API CALL: Creates or gets a conversation ID for the selected user
   Future<int?> startConversation(int userId) async {
     final response = await _apiService.startConversation(userId);
-    return response?.conversationId;
+    return response.conversationId;
   }
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:skillconnect/videolPlay.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoPage extends StatefulWidget {
@@ -119,7 +118,6 @@ class _VideoPageState extends State<VideoPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children:  [
                     GestureDetector(onTap: (){
-                      Navigator.push(context, MaterialPageRoute(builder: (context)=>DarkCreatorProfile()));
                     },
                       child: Text(
                         "@Eagle_007",

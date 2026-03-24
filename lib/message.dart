@@ -1,20 +1,26 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:skillconnect/New/other_person_profile.dart';
+
+
 import '../Provider/message_provider.dart';
 import '../Services/api-service.dart';
-import '../Model/message_model.dart';
+import 'Constants/constants.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String? name;
   final String? image;
   final int conversationId;
+  final int receiverId;
 
   const ChatPage({
     super.key,
     required this.name,
     required this.image,
     required this.conversationId,
+    required this.receiverId,
   });
 
   @override
@@ -25,7 +31,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  // Unified Send Message Logic
   Future<void> _onSendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
@@ -42,7 +47,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         ref
             .read(messagesProvider(widget.conversationId).notifier)
             .addMessage(newMessage);
-
         _scrollToBottom();
       }
     } catch (e) {
@@ -57,7 +61,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       _scrollController.animateTo(
         0,
         duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
+        curve: Curves.easeOutQuart,
       );
     }
   }
@@ -69,137 +73,176 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.dispose();
   }
 
-  // Helper to handle SVG or Network Image
-  Widget _buildAvatarImage(String? url) {
-    // Handle null or empty URL
-    if (url == null || url.isEmpty) {
-      return const Icon(Icons.person, color: Colors.white);
-    }
-
-    // Fix for Android Emulator
-    final cleanUrl = url;
-    final isSvg = cleanUrl.toLowerCase().endsWith('.svg');
-
-    if (isSvg) {
-      return SvgPicture.network(
-        cleanUrl,
-        width: 52,
-        height: 52,
-        fit: BoxFit.cover,
-        placeholderBuilder: (context) => const CircularProgressIndicator(strokeWidth: 2),
-      );
-    } else {
-      return Image.network(
-        cleanUrl,
-        width: 52,
-        height: 52,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, color: Colors.white),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider(widget.conversationId));
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 20, // Slightly smaller for AppBar
-              backgroundColor: Colors.white.withOpacity(0.1),
-              child: ClipOval(
-                // FIXED: Use widget.image and handle fallback
-                child: _buildAvatarImage(widget.image),
+      extendBodyBehindAppBar: true, // Allows content to scroll under blurred AppBar
+      backgroundColor: const Color(0xFF0F0F0F), // Deeper OLED black
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(60),
+        child: ClipRRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: AppBar(
+              backgroundColor: Colors.black.withOpacity(0.5),
+              elevation: 0,
+              leading: IconButton(
+                icon: Container(height: 30,width: 30,decoration: BoxDecoration(shape: BoxShape.circle,border: Border.all(width: 1,color: Colors.white)),child: const Icon(Icons.close, color: Colors.white, size: 20)),
+                onPressed: () => Navigator.pop(context),
+              ),
+              title: Row(
+                children: [
+
+
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.name ?? "User",
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+
+                    ],
+                  ),
+                  Spacer(),
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.white12,
+                    child: GestureDetector(onTap:(){Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>OtherPersonProfile(userId: 2)));},child: ClipOval(child: _buildAvatarImage(widget.image))),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 12),
-            Text(
-              widget.name ?? "User",
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-            ),
-          ],
+          ),
         ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: messagesAsync.when(
-              data: (messages) {
-                if (messages.isEmpty) {
-                  return const Center(child: Text("No messages yet", style: TextStyle(color: Colors.grey)));
-                }
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
-                  reverse: true,
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[messages.length - 1 - index];
-                    final bool isMe = message.senderId == ApiService.userId;
-
-                    return ChatBubble(
-                      message: message.message,
-                      isMe: isMe,
-                    );
-                  },
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (err, _) => Center(child: Text("Error: $err", style: const TextStyle(color: Colors.red))),
+          // Background Pattern (Optional)
+          Positioned.fill(
+            child: Image.network(
+              'https://www.transparenttextures.com/patterns/cubes.png',
+              fit: BoxFit.cover,
             ),
           ),
-          _buildInputArea(),
+          Column(
+            children: [
+              Expanded(
+                child: messagesAsync.when(
+                  data: (messages) {
+                    if (messages.isEmpty) {
+                      return const Center(child: Text("Start a conversation", style: TextStyle(color: Colors.grey)));
+                    }
+                    return ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 100, 16, 20),
+                      reverse: true,
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final message = messages[messages.length - 1 - index];
+                        final bool isMe = message.senderId == ApiService.userId;
+                        return ChatBubble(message: message.message, isMe: isMe);
+                      },
+                    );
+                  },
+                  loading: () => const Center(child: CircularProgressIndicator(color: Colors.blueAccent)),
+                  error: (err, _) => Center(child: Text("Error: $err", style: const TextStyle(color: Colors.red))),
+                ),
+              ),
+              _buildModernInput(),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-      color: const Color(0xFF121212),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: TextField(
-                controller: _messageController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  hintText: "Type a message...",
-                  hintStyle: TextStyle(color: Colors.grey),
-                  border: InputBorder.none,
+  Widget _buildModernInput() {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            border: const Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: TextField(
+                    controller: _messageController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Type a message...",
+                      hintStyle: TextStyle(color: Colors.white38, fontSize: 15),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  ),
                 ),
-                onSubmitted: (_) => _onSendMessage(),
               ),
-            ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: _onSendMessage,
+                child: Container(
+                  height: 48,
+                  width: 48,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF00B4DB), Color(0xFF0083B0)],
+                    ),
+                  ),
+                  child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _onSendMessage,
-            child: const CircleAvatar(
-              backgroundColor: Colors.blueAccent,
-              child: Icon(Icons.send, color: Colors.white, size: 20),
-            ),
-          ),
-        ],
+        ),
       ),
     );
+  }
+
+  Widget _buildAvatarImage(String? url) {
+    if (url == null || url.isEmpty) {
+      return const Icon(Icons.person, color: Colors.white, size: 20);
+    }
+
+    final fullUrl = url.startsWith("http") ? url : "$baseUrlImage$url";
+
+    // SVG
+    if (url.toLowerCase().endsWith(".svg")) {
+      return SvgPicture.network(
+        fullUrl,
+        fit: BoxFit.cover,
+        placeholderBuilder: (_) =>
+        const CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    // Normal Image
+    if (url.toLowerCase().endsWith(".png") ||
+        url.toLowerCase().endsWith(".jpg") ||
+        url.toLowerCase().endsWith(".jpeg") ||
+        url.toLowerCase().endsWith(".webp")) {
+      return Image.network(
+        fullUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+        const Icon(Icons.person, color: Colors.white),
+      );
+    }
+
+    // If unknown format
+    return const Icon(Icons.person, color: Colors.white, size: 20);
   }
 }
 
@@ -214,21 +257,52 @@ class ChatBubble extends StatelessWidget {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isMe ? Colors.blueAccent : Colors.white.withOpacity(0.12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            )
+          ],
+          gradient: isMe
+              ? const LinearGradient(
+            colors: [Color(0xFF9333EA),
+              Color(0xFFDB2777),],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+              : const LinearGradient(
+            colors: [
+              Color(0xFF3B82F6), // blue
+              Color(0xFF06B6D4), // cyan
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          color: isMe ? null : Colors.white,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isMe ? 16 : 0),
-            bottomRight: Radius.circular(isMe ? 0 : 16),
+            topLeft: const Radius.circular(14),
+            topRight: const Radius.circular(14),
+            bottomLeft: Radius.circular(isMe ? 14 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 14),
           ),
         ),
-        child: Text(
-          message,
-          style: const TextStyle(color: Colors.white, fontSize: 15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              message,
+              style: TextStyle(
+                color: isMe ? Colors.white : Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );

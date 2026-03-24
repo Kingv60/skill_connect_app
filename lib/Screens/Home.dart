@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillconnect/Constants/constants.dart';
+import 'package:skillconnect/New/my_all_project.dart';
+import 'package:skillconnect/New/my_enrolled_course.dart';
 import 'package:skillconnect/Screens/project-create.dart';
 import 'package:skillconnect/profile.dart';
 
@@ -11,7 +13,7 @@ import '../New/login-page.dart';
 import '../New/other_person_profile.dart';
 import '../Provider/profile_provider.dart';
 import '../Provider/search_provider.dart';
-import '../Services/api-service.dart';
+
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +23,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool showRetry = false;
   String name = "";
   String username = "";
   String role = "";
@@ -36,6 +39,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     Future.microtask(() {
       ref.read(profileProvider.notifier).loadProfile();
+    });
+
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) {
+        final profile = ref.read(profileProvider);
+        if (profile == null) {
+          setState(() {
+            showRetry = true;
+          });
+        }
+      }
     });
   }
 
@@ -58,28 +72,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       /// Drawer ALWAYS AVAILABLE
       endDrawer: _buildDrawer(),
 
-      body: Stack(
-        children: [
-
-          /// BODY
-          profile == null
-              ? const Center(
-            child: CircularProgressIndicator(),
-          )
-              : SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 70)),
-                _buildModernFeed(),
-                const SliverToBoxAdapter(child: SizedBox(height: 10)),
-              ],
+      body: SafeArea(
+        child: Stack(
+          children: [
+        
+            /// BODY
+            profile == null
+                ? Center(
+              child: showRetry
+                  ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    "Failed to load data",
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        showRetry = false;
+                      });
+        
+                      ref.read(profileProvider.notifier).loadProfile();
+        
+                      Future.delayed(const Duration(seconds: 5), () {
+                        if (mounted && ref.read(profileProvider) == null) {
+                          setState(() {
+                            showRetry = true;
+                          });
+                        }
+                      });
+                    },
+                    child: const Text("Retry"),
+                  ),
+                ],
+              )
+                  : const CircularProgressIndicator(),
+            )
+                : SafeArea(
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  const SliverToBoxAdapter(child: SizedBox(height: 70)),
+                  _buildModernFeed(),
+                  const SliverToBoxAdapter(child: SizedBox(height: 10)),
+                ],
+              ),
             ),
-          ),
-
-          /// HEADER
-          _buildNeonHeader(),
-        ],
+        
+            /// HEADER
+            _buildNeonHeader(),
+          ],
+        ),
       ),
     );
   }
@@ -102,20 +147,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Row(
               children: [
 
-                Container(
-                  height: 40,
-                  width: 40,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    image: DecorationImage(
-                      image: NetworkImage(
-                          "https://picsum.photos/500/500?random=11"),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
 
-                const SizedBox(width: 12),
+
+
 
                 const Text(
                   "SKILL CONNECT",
@@ -282,6 +316,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // 🔥 DRAWER
   Widget _buildDrawer() {
+
     Future<void> _logout() async {
       final prefs = await SharedPreferences.getInstance();
 
@@ -317,24 +352,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     radius: 35,
                     backgroundColor: Colors.transparent,
                     child: ClipOval(
-                      child: avatarUrl.isNotEmpty && avatarUrl.toLowerCase().endsWith(".svg")
-                          ? SvgPicture.network(
-                        avatarUrl,
+                      child: SizedBox(
                         width: 70,
                         height: 70,
-                        fit: BoxFit.cover,
-                        placeholderBuilder: (context) =>
-                        const CircularProgressIndicator(),
-                      )
-                          : Image.network(
-                        avatarUrl.isNotEmpty
-                            ?  "http://localhost:8000$avatarUrl"
-                            : "https://picsum.photos/200/200",
-                        width: 70,
-                        height: 70,
-                        fit: BoxFit.cover,
+                        child: AppAvatar(url: avatarUrl),
                       ),
-                    ),
+                    )
                   ),
                   SizedBox(height: 15),
                   Text(
@@ -377,19 +400,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               );
             },
           ),
-          _drawerItem(Icons.group, "Projects"),
           _drawerItem(Icons.add_box, "Projects Create",onTap: () {
             Navigator.pop(context);
             Navigator.push(context, MaterialPageRoute(builder: (context)=>ProjectCreatePage()));// close drawer first
           },),
           _drawerItem(
-            Icons.book_outlined,
-            "Channels",
+            Icons.check_box_outline_blank_outlined,
+            "My Projects",
             onTap: () {
-              Navigator.pop(context); // close drawer first
+              Navigator.push(context, MaterialPageRoute(builder: (context)=>MyProjectsPage())); // close drawer first
             },
           ),
-          _drawerItem(Icons.chat, "Messages"),
+          _drawerItem(
+            Icons.check_box_outline_blank_outlined,
+            "My Enrolled Courses",
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context)=>MyCoursesListPage())); // close drawer first
+            },
+          ),
           _drawerItem(Icons.settings, "Settings"),
 
           const Spacer(),
@@ -473,10 +501,22 @@ class UserSearchScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+        leading: GestureDetector(
+          onTap: () {
+            Navigator.pop(context);
+          },
+          child: Container(
+            margin: const EdgeInsets.all(10),
+            height: 30,
+            width: 30,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(width: 1, color: Colors.white),
+            ),
+            child: const Icon(Icons.close, color: Colors.white, size: 20),
+          ),
         ),
+
         title: _buildSearchBar(ref),
       ),
       body: searchResults.isEmpty
@@ -523,7 +563,7 @@ class UserSearchScreen extends ConsumerWidget {
         }
         // Ensure it has the full http prefix if it's just a path
         if (!avatarUrl.startsWith("http") && avatarUrl.isNotEmpty) {
-          avatarUrl = baseUrl+avatarUrl;
+          avatarUrl = baseUrlImage+avatarUrl;
         }
 
         return ListTile(
@@ -548,7 +588,7 @@ class UserSearchScreen extends ConsumerWidget {
             child: ClipOval(
               child: avatarUrl.toLowerCase().endsWith(".svg")
                   ? SvgPicture.network(
-                avatarUrl,
+               avatarUrl,
                 fit: BoxFit.cover,
                 placeholderBuilder: (context) => const Padding(
                   padding: EdgeInsets.all(10.0),
@@ -556,7 +596,8 @@ class UserSearchScreen extends ConsumerWidget {
                 ),
               )
                   : Image.network(
-                avatarUrl.isNotEmpty ? avatarUrl : "https://picsum.photos/200",
+
+                avatarUrl.isNotEmpty ? baseUrl+avatarUrl : "https://picsum.photos/200",
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stackTrace) =>
                 const Icon(Icons.person, color: Colors.white38),

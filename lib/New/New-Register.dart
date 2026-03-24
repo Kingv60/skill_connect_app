@@ -3,9 +3,6 @@ import 'package:animate_do/animate_do.dart';
 import 'package:skillconnect/New/profile-setup.dart';
 
 
-import '../Services/api-service.dart';
-import 'avtar-page.dart';
-
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
