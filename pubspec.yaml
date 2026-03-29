@@ -30,11 +30,15 @@ dependencies:
   shared_preferences:
   lottie:
   flutter_riverpod: ^3.2.1
+
   http_parser:
   dotted_border:
   video_player_win: ^3.2.2
   intl: ^0.20.2
   google_fonts: 6.2.1
+  flutter_bloc: ^9.1.1
+  equatable: ^2.0.8
+  stream_transform: ^2.1.1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

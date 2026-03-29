@@ -2,12 +2,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:intl/intl.dart';
 import 'package:skillconnect/New/other_person_profile.dart';
-
 
 import '../Provider/message_provider.dart';
 import '../Services/api-service.dart';
 import 'Constants/constants.dart';
+import 'Services/AppColors.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String? name;
@@ -51,7 +52,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to send: $e")),
+        SnackBar(content: Text("Failed to send: $e"), backgroundColor: AppColors.error),
       );
     }
   }
@@ -78,135 +79,193 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     final messagesAsync = ref.watch(messagesProvider(widget.conversationId));
 
     return Scaffold(
-      extendBodyBehindAppBar: true, // Allows content to scroll under blurred AppBar
-      backgroundColor: const Color(0xFF0F0F0F), // Deeper OLED black
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: AppBar(
-              backgroundColor: Colors.black.withOpacity(0.5),
-              elevation: 0,
-              leading: IconButton(
-                icon: Container(height: 30,width: 30,decoration: BoxDecoration(shape: BoxShape.circle,border: Border.all(width: 1,color: Colors.white)),child: const Icon(Icons.close, color: Colors.white, size: 20)),
-                onPressed: () => Navigator.pop(context),
+      extendBodyBehindAppBar: true,
+      backgroundColor: AppColors.scaffoldBg,
+      appBar: _buildAppBar(),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.topRight,
+            radius: 1.5,
+            colors: [AppColors.drawerBg, AppColors.scaffoldBg],
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: messagesAsync.when(
+                data: (messages) {
+                  if (messages.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.chat_bubble_outline_rounded, size: 48, color: AppColors.textMuted.withOpacity(0.3)),
+                          const SizedBox(height: 12),
+                          const Text("Say hello!", style: TextStyle(color: AppColors.textMuted)),
+                        ],
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(16, 110, 16, 20),
+                    reverse: true,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final message = messages[messages.length - 1 - index];
+                      final bool isMe = message.senderId == ApiService.userId;
+                      return ChatBubble(message: message.message, isMe: isMe);
+                    },
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                error: (err, _) => Center(child: Text("Error: $err", style: const TextStyle(color: AppColors.error))),
               ),
-              title: Row(
+            ),
+            _buildModernInput(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(70),
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: AppBar(
+            backgroundColor: AppColors.scaffoldBg.withOpacity(0.7),
+            elevation: 0,
+            centerTitle: false,
+            leadingWidth: 70,
+            leading: Center(
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  height: 36,
+                  width: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+            titleSpacing: 0,
+            title: GestureDetector(
+              onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => OtherPersonProfile(userId: widget.receiverId))),
+              child: Row(
                 children: [
-
-
+                  _buildModernAvatar(widget.image),
+                  const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         widget.name ?? "User",
-                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
                       ),
-
+                      const Text(
+                        "Online",
+                        style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.w500),
+                      ),
                     ],
-                  ),
-                  Spacer(),
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.white12,
-                    child: GestureDetector(onTap:(){Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>OtherPersonProfile(userId: 2)));},child: ClipOval(child: _buildAvatarImage(widget.image))),
                   ),
                 ],
               ),
             ),
+            actions: [
+              IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary)),
+              const SizedBox(width: 8),
+            ],
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          // Background Pattern (Optional)
-          Positioned.fill(
-            child: Image.network(
-              'https://www.transparenttextures.com/patterns/cubes.png',
-              fit: BoxFit.cover,
-            ),
-          ),
-          Column(
-            children: [
-              Expanded(
-                child: messagesAsync.when(
-                  data: (messages) {
-                    if (messages.isEmpty) {
-                      return const Center(child: Text("Start a conversation", style: TextStyle(color: Colors.grey)));
-                    }
-                    return ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 100, 16, 20),
-                      reverse: true,
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final message = messages[messages.length - 1 - index];
-                        final bool isMe = message.senderId == ApiService.userId;
-                        return ChatBubble(message: message.message, isMe: isMe);
-                      },
-                    );
-                  },
-                  loading: () => const Center(child: CircularProgressIndicator(color: Colors.blueAccent)),
-                  error: (err, _) => Center(child: Text("Error: $err", style: const TextStyle(color: Colors.red))),
-                ),
-              ),
-              _buildModernInput(),
-            ],
-          ),
-        ],
+    );
+  }
+
+  Widget _buildModernAvatar(String? url) {
+    return Container(
+      padding: const EdgeInsets.all(1.5),
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: AppColors.primaryGradient,
+      ),
+      child: CircleAvatar(
+        radius: 19,
+        backgroundColor: AppColors.cardBg,
+        child: ClipOval(child: _buildAvatarImage(url)),
       ),
     );
   }
 
   Widget _buildModernInput() {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            border: const Border(top: BorderSide(color: Colors.white10, width: 0.5)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.07),
-                    borderRadius: BorderRadius.circular(24),
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+      decoration: BoxDecoration(
+        color: AppColors.scaffoldBg,
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.textMuted),
                   ),
-                  child: TextField(
-                    controller: _messageController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: "Type a message...",
-                      hintStyle: TextStyle(color: Colors.white38, fontSize: 15),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                      decoration: const InputDecoration(
+                        hintText: "Write a message...",
+                        hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 15),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: _onSendMessage,
-                child: Container(
-                  height: 48,
-                  width: 48,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF00B4DB), Color(0xFF0083B0)],
-                    ),
-                  ),
-                  child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _onSendMessage,
+            child: Container(
+              height: 52,
+              width: 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: AppColors.primaryGradient,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: const Icon(Icons.send_rounded, color: Colors.white, size: 24),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -215,34 +274,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (url == null || url.isEmpty) {
       return const Icon(Icons.person, color: Colors.white, size: 20);
     }
-
     final fullUrl = url.startsWith("http") ? url : "$baseUrlImage$url";
-
-    // SVG
     if (url.toLowerCase().endsWith(".svg")) {
-      return SvgPicture.network(
-        fullUrl,
-        fit: BoxFit.cover,
-        placeholderBuilder: (_) =>
-        const CircularProgressIndicator(strokeWidth: 2),
-      );
+      return SvgPicture.network(fullUrl, fit: BoxFit.cover);
     }
-
-    // Normal Image
-    if (url.toLowerCase().endsWith(".png") ||
-        url.toLowerCase().endsWith(".jpg") ||
-        url.toLowerCase().endsWith(".jpeg") ||
-        url.toLowerCase().endsWith(".webp")) {
-      return Image.network(
-        fullUrl,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-        const Icon(Icons.person, color: Colors.white),
-      );
-    }
-
-    // If unknown format
-    return const Icon(Icons.person, color: Colors.white, size: 20);
+    return Image.network(
+      fullUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white),
+    );
   }
 }
 
@@ -256,54 +296,49 @@ class ChatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        padding: const EdgeInsets.all(10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            )
-          ],
-          gradient: isMe
-              ? const LinearGradient(
-            colors: [Color(0xFF9333EA),
-              Color(0xFFDB2777),],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          )
-              : const LinearGradient(
-            colors: [
-              Color(0xFF3B82F6), // blue
-              Color(0xFF06B6D4), // cyan
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          color: isMe ? null : Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(isMe ? 14 : 4),
-            bottomRight: Radius.circular(isMe ? 4 : 14),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+            decoration: BoxDecoration(
+              gradient: isMe ? AppColors.primaryGradient : null,
+              color: isMe ? null : AppColors.surface,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: Radius.circular(isMe ? 20 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 20),
+              ),
+              boxShadow: [
+                if (isMe)
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.15),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+              ],
+            ),
+            child: Text(
               message,
               style: TextStyle(
-                color: isMe ? Colors.white : Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
+                color: isMe ? Colors.white : AppColors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+                height: 1.3,
               ),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(
+              "12:45 PM", // You can pass actual time here later
+              style: TextStyle(color: AppColors.textMuted, fontSize: 9),
+            ),
+          ),
+        ],
       ),
     );
   }

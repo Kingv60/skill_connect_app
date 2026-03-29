@@ -5,10 +5,13 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillconnect/Model/globalFeed_model.dart';
 
+import '../Model/Post_model.dart';
 import '../Model/Project_Request_get.dart';
 import '../Model/chatModel.dart';
+import '../Model/home_page_reel.dart';
 import '../Model/message_model.dart';
 import '../Model/my_project_model.dart';
+import '../Model/reel_model.dart';
 import '../Model/single_project_model.dart';
 import '../Model/startConservation.dart';
 import 'package:http_parser/http_parser.dart';
@@ -116,6 +119,28 @@ class ApiService {
       return data;
     } else {
       throw Exception(data["message"] ?? "Registration failed");
+    }
+  }
+
+  /// Username Check API
+  Future<Map<String, dynamic>> checkUsernameAvailability(String username) async {
+    final url = Uri.parse('$baseUrl/auth/check-username');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': username}),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        // Returns {"available": true, "message": "Username is available"}
+        return jsonDecode(response.body);
+      } else {
+        return {'available': false, 'message': "Server Error"};
+      }
+    } catch (e) {
+      return {'available': false, 'message': "Connection Failed"};
     }
   }
 
@@ -398,8 +423,11 @@ class ApiService {
     String? courseId,
     required Function(double progress) onProgress,
   }) async {
-    final url = Uri.parse("$baseUrl/videos/");
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final int? userId = prefs.getInt("user_id");
+    final url = Uri.parse("$baseUrl/videos/$userId");
     print("🚀 UPLOAD VIDEO REQUEST: $url");
+
 
     try {
       var request = http.MultipartRequest('POST', url);
@@ -453,15 +481,20 @@ class ApiService {
 
   /// Video by time
   Future<List<dynamic>> getAllVideosLatest() async {
-    final url = Uri.parse("$baseUrl/videos/all-latest");
-    print("📡 Fetching Latest Videos: $url");
+    // 1. Get the user_id from local storage
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final int? userId = prefs.getInt("user_id");
+
+    // 2. REQUIRED: Construct the URL with the query parameter
+    // This turns it into: .../api/videos/all-latest?user_id=5
+    final url = Uri.parse("$baseUrl/videos/all-latest?user_id=$userId");
+    print("📡 Fetching Latest Videos for User $userId: $url");
 
     try {
       final response = await http.get(
         url,
         headers: {
           "Content-Type": "application/json",
-          // Ensure token is not null before sending
           if (token != null) "Authorization": "Bearer $token",
         },
       );
@@ -469,16 +502,13 @@ class ApiService {
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
 
-        // We extract the "videos" key from your JSON response
         if (data['success'] == true) {
           return data['videos'] ?? [];
-        } else {
-          return [];
         }
-      } else {
-        print("❌ Server Error: ${response.statusCode}");
-        return [];
       }
+
+      print("❌ Error: ${response.statusCode}");
+      return [];
     } catch (e) {
       print("⚠️ Connection Error: $e");
       return [];
@@ -848,6 +878,147 @@ class ApiService {
   }
 
 
+  /// Post Section API
+  /// ===========================
+  /// 🔹 POST MEDIA & INTERACTIONS
+  /// ===========================
+
+  /// 1. CREATE MEDIA POST (Image or Video)
+  Future<bool> createMediaPost({
+    required File mediaFile,
+    required String caption,
+    String? location,
+  }) async {
+    final url = Uri.parse("$baseUrl/posts/mediaPost");
+    print("🚀 CREATE MEDIA POST: $url");
+
+    try {
+      var request = http.MultipartRequest("POST", url);
+      request.headers["Authorization"] = "Bearer $token";
+
+      request.fields["caption"] = caption;
+      if (location != null) request.fields["location"] = location;
+
+      // Detect mime type (video or image)
+      String extension = mediaFile.path.split('.').last.toLowerCase();
+      String type = (extension == 'mp4' || extension == 'mov') ? 'video' : 'image';
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          "media", // Matches backend upload.single("media")
+          mediaFile.path,
+          contentType: MediaType(type, extension),
+        ),
+      );
+
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      print("📡 SERVER STATUS: ${response.statusCode}");
+      print("📦 SERVER RESPONSE: ${response.body}");
+
+      print("STATUS: ${response.statusCode}");
+      return response.statusCode == 201;
+    } catch (e) {
+
+      print("CREATE POST ERROR: $e");
+      return false;
+    }
+  }
+
+  /// 2. GET GLOBAL MEDIA FEED
+  Future<List<Post>> fetchFeed(String token) async {
+    final url = Uri.parse('$baseUrl/posts/mediaPost/feed');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // Assuming it's a Bearer token
+        },
+      );
+
+      if (response.statusCode == 200) {
+        Map<String, dynamic> data = json.decode(response.body);
+        List<dynamic> postsJson = data['posts'];
+
+        return postsJson.map((json) => Post.fromJson(json)).toList();
+      } else {
+        throw Exception("Failed to load feed: ${response.statusCode}");
+      }
+    } catch (e) {
+      throw Exception("Error connecting to server: $e");
+    }
+  }
+
+  /// 3. GET MY MEDIA POSTS
+  Future<List<dynamic>> getMyMediaPosts() async {
+    final url = Uri.parse("$baseUrl/posts/mediaPost/my");
+    try {
+      final response = await http.get(url, headers: headers);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data["posts"] ?? [];
+      }
+      return [];
+    } catch (e) {
+      print("MY POSTS ERROR: $e");
+      return [];
+    }
+  }
+
+  /// 4. TOGGLE LIKE (Like/Unlike)
+  Future<bool> togglePostLike(int postId) async {
+    final url = Uri.parse("$baseUrl/posts/like");
+    try {
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: jsonEncode({"post_id": postId}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("LIKE ERROR: $e");
+      return false;
+    }
+  }
+
+  /// 5. ADD COMMENT
+  Future<Map<String, dynamic>?> addPostComment(int postId, String text) async {
+    final url = Uri.parse("$baseUrl/posts/comment");
+    try {
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: jsonEncode({
+          "post_id": postId,
+          "comment_text": text,
+        }),
+      );
+      if (response.statusCode == 201) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print("COMMENT ERROR: $e");
+      return null;
+    }
+  }
+
+  /// 6. DELETE MEDIA POST
+  Future<bool> deleteMediaPost(int postId) async {
+    final url = Uri.parse("$baseUrl/posts/mediaPost/$postId");
+    try {
+      final response = await http.delete(url, headers: headers);
+      return response.statusCode == 200;
+    } catch (e) {
+      print("DELETE POST ERROR: $e");
+      return false;
+    }
+  }
+
+
 
   /// Create Course
   /// ===========================
@@ -973,6 +1144,90 @@ class ApiService {
     }
   }
 
+  /// Create reel
+  Future<bool> uploadReel({
+    required String caption,
+    required File videoFile,
+  }) async {
+    final url = Uri.parse("$baseUrl/reels");
+
+    try {
+      var request = http.MultipartRequest('POST', url);
+
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      request.fields['caption'] = caption;
+
+      // Ensure we are sending it as a video/mp4
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'reel',
+          videoFile.path,
+          contentType: MediaType('video', 'mp4'),
+        ),
+      );
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print("Upload Error: $e");
+      return false;
+    }
+  }
+
+  /// Get All reels
+  Future<List<Reel>> fetchMyReels() async {
+    final url = Uri.parse("$baseUrl/reels/my");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        List<dynamic> body = jsonDecode(response.body);
+        return body.map((item) => Reel.fromJson(item)).toList();
+      } else {
+        throw Exception("Failed to load reels: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Error fetching reels: $e");
+      return [];
+    }
+  }
+
+  ///
+  Future<List<Reel>> fetchReels() async {
+    final url = Uri.parse('$baseUrl/reels/feed');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // Passing the token here
+        },
+      );
+
+      if (response.statusCode == 200) {
+        List<dynamic> body = jsonDecode(response.body);
+        return body.map((dynamic item) => Reel.fromJson(item)).toList();
+      } else {
+        throw Exception('Failed to load reels. Status: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Connection error: $e');
+    }
+  }
   ///
   Future<bool> sendJoinRequest({
     required int projectId,

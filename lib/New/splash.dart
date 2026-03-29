@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillconnect/BottomNav.dart';
 
 import '../Provider/profile_provider.dart';
-import 'login-page.dart';
+import '../Smooth/presentation/new_login_page.dart';
+
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});

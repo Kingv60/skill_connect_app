@@ -1,7 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
-import '../Constants/constants.dart';
 import '../Model/globalFeed_model.dart';
 import '../Services/api-service.dart';
 import '../New/project-info.dart';
@@ -19,7 +17,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
   bool isLoading = true;
   int _currentIndex = 0;
 
-  // Animation values
   double _dragX = 0;
   double _dragY = 0;
   double _rotation = 0;
@@ -40,7 +37,6 @@ class _ProjectScreenState extends State<ProjectScreen> {
       });
     } catch (e) {
       setState(() => isLoading = false);
-      debugPrint("Error fetching feed: $e");
     }
   }
 
@@ -50,25 +46,18 @@ class _ProjectScreenState extends State<ProjectScreen> {
     setState(() {
       if (direction == "right") {
         _dragX = 600;
-        if (_currentIndex < projects.length - 1) {
-          _currentIndex++;
-        } else {
-          _fetchFeed();
-        }
+        if (_currentIndex < projects.length - 1) _currentIndex++;
+        else _fetchFeed();
       } else if (direction == "left") {
         _dragX = -600;
-        if (_currentIndex > 0) {
-          _currentIndex--;
-        }
+        if (_currentIndex > 0) _currentIndex--;
       } else if (direction == "up") {
         _dragY = -800;
         Future.delayed(const Duration(milliseconds: 300), () {
           setState(() {
             if (projects.isNotEmpty) {
               projects.removeAt(_currentIndex);
-              if (_currentIndex >= projects.length && _currentIndex > 0) {
-                _currentIndex--;
-              }
+              if (_currentIndex >= projects.length && _currentIndex > 0) _currentIndex--;
             }
           });
         });
@@ -90,58 +79,63 @@ class _ProjectScreenState extends State<ProjectScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            const Text(
-              "DISCOVER PROJECTS",
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 4,
+      backgroundColor: const Color(0xFF080808),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment.topRight,
+            radius: 1.5,
+            colors: [
+              Colors.indigoAccent.withOpacity(0.05),
+              Colors.black,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 15),
+              _buildHeader(),
+              const SizedBox(height: 15),
+              Expanded(
+                child: isLoading
+                    ? const Center(child: CircularProgressIndicator(color: Colors.indigoAccent, strokeWidth: 2))
+                    : projects.isEmpty
+                    ? _buildEmptyState()
+                    : _buildSwipeableCard(),
               ),
-            ),
-            const SizedBox(height: 20),
-
-            // The Card Area - Now uses Expanded to fill middle space
-            Expanded(
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Colors.indigoAccent))
-                  : projects.isEmpty
-                  ? _buildEmptyState()
-                  : _buildSwipeableCard(),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Action Buttons
-            if (projects.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 30),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _ActionButton(
-                        icon: Icons.close,
-                        color: Colors.white10,
-                        onTap: () => _handleSwipe("left")),
-                    _ActionButton(
-                        icon: Icons.keyboard_double_arrow_up,
-                        color: Colors.redAccent.withOpacity(0.8),
-                        size: 75,
-                        onTap: () => _handleSwipe("up")),
-                    _ActionButton(
-                        icon: Icons.favorite,
-                        color: Colors.indigoAccent,
-                        onTap: () => _handleSwipe("right")),
-                  ],
-                ),
-              ),
-          ],
+              const SizedBox(height: 20),
+              if (projects.isNotEmpty) _buildFooterActions(),
+              const SizedBox(height: 10),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Text(
+          "DISCOVER PROJECTS",
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.9),
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
+            letterSpacing: 6,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Container(
+          height: 2,
+          width: 30,
+          decoration: BoxDecoration(
+            color: Colors.indigoAccent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+        )
+      ],
     );
   }
 
@@ -151,17 +145,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
         setState(() {
           _dragX += details.delta.dx;
           _dragY += details.delta.dy;
-          _rotation = _dragX / 300;
+          _rotation = _dragX / 350;
         });
       },
       onPanEnd: (details) {
-        if (_dragY < -150) {
-          _handleSwipe("up");
-        } else if (_dragX > 150) {
-          _handleSwipe("right");
-        } else if (_dragX < -150) {
-          _handleSwipe("left");
-        } else {
+        if (_dragY < -150) _handleSwipe("up");
+        else if (_dragX > 150) _handleSwipe("right");
+        else if (_dragX < -150) _handleSwipe("left");
+        else {
           setState(() {
             _dragX = 0;
             _dragY = 0;
@@ -169,117 +160,157 @@ class _ProjectScreenState extends State<ProjectScreen> {
           });
         }
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-        transform: Matrix4.identity()
-          ..translate(_dragX, _dragY)
-          ..rotateZ(_rotation),
-        child: _buildCardContent(),
+      child: AnimatedRotation(
+        turns: _rotation / (2 * 3.14159),
+        duration: Duration.zero,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.identity()..translate(_dragX, _dragY),
+          child: _buildCardContent(),
+        ),
       ),
     );
   }
 
   Widget _buildCardContent() {
     final project = projects[_currentIndex];
-
-    // --- UPDATED LOGIC: RANDOM IMAGE ---
-    // We use the project ID as a seed so each project gets a unique but consistent random image.
-    // Width 600, Height 800 for a nice vertical card aspect ratio.
     String imageUrl = "https://picsum.photos/seed/${project.projectId}/600/800";
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: GestureDetector(
-            onDoubleTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ProjectInfoPage(projectId: project.projectId)),
-              );
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(40),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(35),
+          boxShadow: [
+            BoxShadow(
+              color: _dragX > 0
+                  ? Colors.greenAccent.withOpacity(0.1)
+                  : _dragX < 0 ? Colors.redAccent.withOpacity(0.1) : Colors.black,
+              blurRadius: 30,
+              spreadRadius: -10,
+            )
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(35),
+          child: Stack(
+            children: [
+              // Background Image
+              Positioned.fill(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) =>
+                  progress == null ? child : Container(color: Colors.white.withOpacity(0.05)),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Image takes the majority of the card space
-                  Expanded(
-                    flex: 3,
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        // Loading state for the random image
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return const Center(
-                            child: CircularProgressIndicator(color: Colors.white24),
-                          );
-                        },
-                        errorBuilder: (ctx, err, stack) => _buildPlaceholderIcon(),
-                      ),
+              // Content Overlay
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black.withOpacity(0.9)],
+                      stops: const [0.4, 1.0],
                     ),
                   ),
-                  // Content details section
-                  Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(project.title,
-                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-                        const SizedBox(height: 4),
-                        Text("by ${project.username}",
-                            style: const TextStyle(color: Colors.indigoAccent, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 12),
-                        Text(project.description,
-                            maxLines: 2, overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                        const SizedBox(height: 15),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: project.techStack.take(3).map((tech) => _buildMiniChip(tech)).toList(),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              // Details
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _buildGlassFooter(project),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildPlaceholderIcon() {
-    return Container(
-      color: Colors.white10,
-      width: double.infinity,
-      child: const Icon(Icons.code, color: Colors.white24, size: 50),
+  Widget _buildGlassFooter(GlobalFeed project) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+      child: Container(
+        padding: const EdgeInsets.all(25),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(project.title,
+                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
+                ),
+                Icon(Icons.verified_rounded, color: Colors.indigoAccent, size: 20),
+              ],
+            ),
+            Text("by @${project.username}",
+                style: TextStyle(color: Colors.indigoAccent.withOpacity(0.9), fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 12),
+            Text(project.description,
+                maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14, height: 1.4)),
+            const SizedBox(height: 18),
+            Wrap(
+              spacing: 8,
+              children: project.techStack.take(3).map((tech) => _buildModernChip(tech)).toList(),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildMiniChip(String label) {
+  Widget _buildModernChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        color: Colors.indigoAccent.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.indigoAccent.withOpacity(0.3)),
       ),
-      child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500)),
+      child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildFooterActions() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _ModernActionButton(
+            icon: Icons.close_rounded,
+            color: Colors.white.withOpacity(0.05),
+            iconColor: Colors.white54,
+            onTap: () => _handleSwipe("left"),
+          ),
+          _ModernActionButton(
+            icon: Icons.rocket_launch_rounded,
+            color: Colors.redAccent.withOpacity(0.2),
+            iconColor: Colors.redAccent,
+            size: 75,
+            glow: true,
+            onTap: () => _handleSwipe("up"),
+          ),
+          _ModernActionButton(
+            icon: Icons.favorite_rounded,
+            color: Colors.indigoAccent.withOpacity(0.2),
+            iconColor: Colors.indigoAccent,
+            onTap: () => _handleSwipe("right"),
+          ),
+        ],
+      ),
     );
   }
 
@@ -288,12 +319,12 @@ class _ProjectScreenState extends State<ProjectScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.auto_awesome_motion, size: 80, color: Colors.white24),
+          Icon(Icons.auto_awesome_rounded, size: 60, color: Colors.indigoAccent.withOpacity(0.3)),
           const SizedBox(height: 20),
-          const Text("No more projects found", style: TextStyle(color: Colors.white54, fontSize: 18)),
+          const Text("ALL CAUGHT UP", style: TextStyle(color: Colors.white38, letterSpacing: 2, fontWeight: FontWeight.bold)),
           TextButton(
             onPressed: _fetchFeed,
-            child: const Text("Refresh Feed", style: TextStyle(color: Colors.indigoAccent)),
+            child: const Text("Refill Feed", style: TextStyle(color: Colors.indigoAccent)),
           ),
         ],
       ),
@@ -301,24 +332,32 @@ class _ProjectScreenState extends State<ProjectScreen> {
   }
 }
 
-class _ActionButton extends StatelessWidget {
+class _ModernActionButton extends StatelessWidget {
   final IconData icon;
   final Color color;
+  final Color iconColor;
   final double size;
+  final bool glow;
   final VoidCallback onTap;
 
-  const _ActionButton({required this.icon, required this.color, this.size = 60, required this.onTap});
+  const _ModernActionButton({required this.icon, required this.color, required this.iconColor, this.size = 60, this.glow = false, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(size / 2),
       child: Container(
         height: size,
         width: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: Icon(icon, color: Colors.white, size: size * 0.5),
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: iconColor.withOpacity(0.2), width: 1.5),
+          boxShadow: [
+            if (glow) BoxShadow(color: iconColor.withOpacity(0.2), blurRadius: 20, spreadRadius: 2)
+          ],
+        ),
+        child: Icon(icon, color: iconColor, size: size * 0.45),
       ),
     );
   }

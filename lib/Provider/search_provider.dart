@@ -24,6 +24,10 @@ class ChatSearchNotifier extends StateNotifier<List<dynamic>> {
     }
   }
 
+  void clearSearch() {
+    state = []; // This resets the list to empty
+  }
+
   // API CALL: Creates or gets a conversation ID for the selected user
   Future<int?> startConversation(int userId) async {
     final response = await _apiService.startConversation(userId);

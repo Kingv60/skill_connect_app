@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
@@ -25,7 +26,6 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
   }
 
   void _initializePlayer(String url) async {
-    // Show a small loader while switching videos
     setState(() => _chewieController = null);
 
     _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
@@ -37,12 +37,11 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
       looping: false,
       aspectRatio: 16 / 9,
       allowFullScreen: true,
-      // YouTube-style red progress bar
       materialProgressColors: ChewieProgressColors(
-        playedColor: Colors.red,
-        handleColor: Colors.red,
-        backgroundColor: Colors.white24,
-        bufferedColor: Colors.white54,
+        playedColor: Colors.redAccent,
+        handleColor: Colors.redAccent,
+        backgroundColor: Colors.white10,
+        bufferedColor: Colors.white30,
       ),
     );
     setState(() {});
@@ -64,76 +63,129 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xff0f0f0f), // YouTube Dark Mode black
-      body: SafeArea(
-        child: Column(
-          children: [
-            /// 1. FIXED VIDEO PLAYER (Always at top)
-            _buildVideoHeader(),
+      backgroundColor: const Color(0xff0f0f0f),
+      body: Column(
+        children: [
+          /// 1. VIDEO PLAYER AREA
+          _buildVideoHeader(),
 
-            /// 2. SCROLLABLE DETAILS AND SUGGESTIONS
-            Expanded(
-              child: ListView(
-                children: [
-                  _buildVideoInfo(),
-                  const Divider(color: Colors.white10),
-                  _buildActionButtons(),
-                  const Divider(color: Colors.white10),
-                  _buildSuggestedVideos(),
-                ],
-              ),
+          /// 2. CONTENT AREA
+          Expanded(
+            child: ListView(
+              physics: const BouncingScrollPhysics(),
+              children: [
+                _buildVideoInfo(),
+                _buildActionButtons(),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    "Up Next",
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                _buildSuggestedVideos(),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildVideoHeader() {
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: _chewieController != null && _videoController.value.isInitialized
-          ? Chewie(key: ValueKey(_currentUrl), controller: _chewieController!)
-          : const Center(child: CircularProgressIndicator(color: Colors.red)),
+    return Stack(
+      children: [
+        // 1. THE PLAYER
+        Container(
+          width: double.infinity,
+          color: Colors.black,
+          child: SafeArea(
+            bottom: false,
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: _chewieController != null && _videoController.value.isInitialized
+                  ? Chewie(key: ValueKey(_currentUrl), controller: _chewieController!)
+                  : const Center(child: CircularProgressIndicator(color: Colors.redAccent, strokeWidth: 2)),
+            ),
+          ),
+        ),
+
+        // 2. THE COMPACT BACK BUTTON
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 8, // Adjusts for status bar
+          left: 12,
+          child: InkWell(
+            onTap: () => Navigator.pop(context),
+            borderRadius: BorderRadius.circular(50),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(50),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), // Glass effect
+                child: Container(
+                  height: 36, // Fixed small size
+                  width: 36,  // Fixed small size
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05), // Semi-transparent
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.1), width: 0.5),
+                  ),
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded, // Better "Minimize/Back" feel
+                    color: Colors.white,
+                    size: 15,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildVideoInfo() {
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             widget.title,
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
           ),
-          const SizedBox(height: 8),
-          const Text("1.5M views • 3 hours ago", style: TextStyle(color: Colors.grey, fontSize: 13)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Text("1.2M views", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+              const SizedBox(width: 8),
+              Container(width: 3, height: 3, decoration: const BoxDecoration(color: Colors.white38, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              const Text("Oct 2024", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _buildActionButtons() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 10),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _ActionButton(Icons.thumb_up_alt_outlined, "240K"),
-          _ActionButton(Icons.thumb_down_alt_outlined, "Dislike"),
-          _ActionButton(Icons.share, "Share"),
-          _ActionButton(Icons.download, "Download"),
+          _ModernPillButton(Icons.thumb_up_outlined, "12K", () {}),
+          _ModernPillButton(Icons.thumb_down_outlined, "Dislike", () {}),
+          _ModernPillButton(Icons.ios_share_rounded, "Share", () {}),
+          _ModernPillButton(Icons.file_download_outlined, "Download", () {}),
+          _ModernPillButton(Icons.playlist_add_rounded, "Save", () {}),
         ],
       ),
     );
@@ -141,38 +193,98 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
 
   Widget _buildSuggestedVideos() {
     return ListView.builder(
-      shrinkWrap: true, // Needed inside another ListView
+      shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: 10,
+      itemCount: 8,
       itemBuilder: (context, index) {
-        return ListTile(
+        return InkWell(
           onTap: () => _onVideoSelected("https://your-api-link.mp4"),
-          leading: Container(
-            width: 120, height: 70,
-            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.play_arrow, color: Colors.white24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Thumbnail
+                Stack(
+                  children: [
+                    Container(
+                      width: 150,
+                      height: 85,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white24, size: 30)),
+                    ),
+                    Positioned(
+                      bottom: 5,
+                      right: 5,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(4)),
+                        child: const Text("12:45", style: TextStyle(color: Colors.white, fontSize: 10)),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(width: 12),
+                // Text Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Mastering Course Logic Part ${index + 1}",
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        "Course Creator • 45K views",
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.more_vert, color: Colors.white38, size: 18),
+              ],
+            ),
           ),
-          title: Text("Suggested Lesson #$index", style: const TextStyle(color: Colors.white, fontSize: 14)),
-          subtitle: const Text("Creator Name • 500K views", style: TextStyle(color: Colors.white38, fontSize: 12)),
         );
       },
     );
   }
 }
 
-class _ActionButton extends StatelessWidget {
+class _ModernPillButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  const _ActionButton(this.icon, this.label);
+  final VoidCallback onTap;
+  const _ModernPillButton(this.icon, this.label, this.onTap);
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-      ],
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Icon(icon, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
+                Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

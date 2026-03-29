@@ -4,26 +4,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:intl/intl.dart';
+// Assuming AppColors is in your constants.dart or similar
+import 'Constants/constants.dart';
 import '../Provider/chat_provider.dart';
 import '../Provider/search_provider.dart';
-import 'Constants/constants.dart';
+import 'Services/AppColors.dart';
 import 'message.dart';
 
-/// -------------------------------
-/// UNREAD CHAT PROVIDER
-/// -------------------------------
-final unreadChatProvider =
-StateNotifierProvider<UnreadChatNotifier, Set<int>>((ref) {
-  return UnreadChatNotifier();
-});
-
+// --- (UnreadChatProvider and Notifier remain unchanged) ---
+final unreadChatProvider = StateNotifierProvider<UnreadChatNotifier, Set<int>>((ref) => UnreadChatNotifier());
 class UnreadChatNotifier extends StateNotifier<Set<int>> {
   UnreadChatNotifier() : super({});
-
-  void markUnread(int conversationId) {
-    state = {...state, conversationId};
-  }
-
+  void markUnread(int conversationId) => state = {...state, conversationId};
   void markRead(int conversationId) {
     final newState = {...state};
     newState.remove(conversationId);
@@ -31,10 +23,8 @@ class UnreadChatNotifier extends StateNotifier<Set<int>> {
   }
 }
 
-
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
-
   @override
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
@@ -48,100 +38,104 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
+  // --- MODERNIZED USER SELECTION SHEET ---
   void _showUserSelectionSheet(BuildContext context) {
     ref.read(chatSearchProvider.notifier).searchUsers("");
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) {
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF1A1A1A),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-            ),
-            child: Consumer(
-              builder: (context, ref, child) {
-                final users = ref.watch(chatSearchProvider);
-                return ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.75,
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.symmetric(vertical: 12),
-                        height: 4,
-                        width: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      const Text(
-                        "New Message",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 10),
-                      Flexible(
-                        child: users.isEmpty
-                            ? const Center(
-                            child: CircularProgressIndicator(
-                                color: Colors.blueAccent))
-                            : ListView.builder(
-                          padding:
-                          const EdgeInsets.symmetric(horizontal: 10),
-                          itemCount: users.length,
-                          itemBuilder: (context, index) {
-                            final user = users[index];
-                            return ListTile(
-                              leading: AppAvatar(
-                                  url: user["avatar"],
-                                  name: user["name"] ?? "U"),
-                              title: Text(user["name"],
-                                  style: const TextStyle(
-                                      color: Colors.white)),
-                              onTap: () async {
-                                final int? conversationId = await ref
-                                    .read(chatSearchProvider.notifier)
-                                    .startConversation(user["user_id"]);
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.drawerBg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+          ),
+          child: Consumer(
+            builder: (context, ref, child) {
+              final users = ref.watch(chatSearchProvider);
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    Container(height: 4, width: 40, decoration: BoxDecoration(color: AppColors.textMuted, borderRadius: BorderRadius.circular(10))),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Text("New Conversation", style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    ),
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          // 1. If the list is empty, we show either a loader or the "Not found" text
+                          if (users.isEmpty) {
+                            // You can check if the search controller is empty to decide
+                            // whether to show a "Search for someone" prompt or "No user found"
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.person_search_rounded,
+                                      size: 60, color: AppColors.textMuted.withOpacity(0.5)),
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    "No user found",
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
 
-                                if (context.mounted) {
-                                  Navigator.pop(context);
-
-                                  if (conversationId != null) {
+                          // 2. If list has data, show the ListView
+                          return ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            itemCount: users.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final user = users[index];
+                              return _buildModernListTile(
+                                onTap: () async {
+                                  final id = await ref
+                                      .read(chatSearchProvider.notifier)
+                                      .startConversation(user["user_id"]);
+                                  if (context.mounted && id != null) {
+                                    Navigator.pop(context);
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
                                         builder: (_) => ChatPage(
                                           name: user["name"],
                                           image: user["avatar"],
-                                          conversationId: conversationId,
+                                          conversationId: id,
                                           receiverId: user["user_id"],
                                         ),
                                       ),
                                     );
                                   }
-                                }
-                              },
-                            );
-                          },
-                        ),
+                                },
+                                leading: AppAvatar(url: user["avatar"], name: user["name"], radius: 26),
+                                title: user["name"],
+                                subtitle: "Start a new chat",
+                              );
+                            },
+                          );
+                        },
                       ),
-                    ],
-                  ),
-                );
-              },
-            ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -151,20 +145,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final searchResults = ref.watch(chatSearchProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F0F),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.blueAccent,
-        elevation: 4,
-        child: const Icon(Icons.add_comment_rounded, color: Colors.white),
-        onPressed: () => _showUserSelectionSheet(context),
+      backgroundColor: AppColors.scaffoldBg,
+      floatingActionButton: Container(
+        decoration: BoxDecoration(
+          gradient: AppColors.primaryGradient,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
+        ),
+        child: FloatingActionButton(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+          onPressed: () => _showUserSelectionSheet(context),
+        ),
       ),
       body: SafeArea(
         child: Column(
           children: [
             _buildHeader(),
             Expanded(
-              child: searchResults.isNotEmpty &&
-                  _searchController.text.isNotEmpty
+              child: searchResults.isNotEmpty && _searchController.text.isNotEmpty
                   ? _buildSearchResults(searchResults)
                   : _buildChatList(chatsAsync),
             ),
@@ -176,33 +176,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Messages",
-            style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Colors.white),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Messages", style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.5)),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.more_vert, color: AppColors.textSecondary),
+              )
+            ],
           ),
-          const SizedBox(height: 15),
-          TextField(
-            controller: _searchController,
-            style: const TextStyle(color: Colors.white),
-            onChanged: (val) =>
-                ref.read(chatSearchProvider.notifier).searchUsers(val.trim()),
-            decoration: InputDecoration(
-              hintText: "Search...",
-              hintStyle: const TextStyle(color: Colors.white30),
-              prefixIcon: const Icon(Icons.search, color: Colors.white30),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.05),
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide.none),
-              contentPadding: EdgeInsets.zero,
+          const SizedBox(height: 20),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: AppColors.textPrimary),
+              onChanged: (val) {
+                final query = val.trim();
+                if (query.length > 2) ref.read(chatSearchProvider.notifier).searchUsers(query);
+                else if (query.isEmpty) ref.read(chatSearchProvider.notifier).searchUsers("");
+              },
+              decoration: const InputDecoration(
+                hintText: "Search conversations...",
+                hintStyle: TextStyle(color: AppColors.textMuted),
+                prefixIcon: Icon(Icons.search_rounded, color: AppColors.primary),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 15),
+              ),
             ),
           ),
         ],
@@ -212,246 +222,182 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildChatList(AsyncValue chatsAsync) {
     final unreadChats = ref.watch(unreadChatProvider);
-
     return chatsAsync.when(
       data: (chats) {
-        if (chats.isEmpty) {
-          return const Center(
-              child: Text("No chats",
-                  style: TextStyle(color: Colors.white30)));
-        }
-
+        if (chats.isEmpty) return const Center(child: Text("No conversations yet", style: TextStyle(color: AppColors.textMuted)));
         return RefreshIndicator(
-          onRefresh: () =>
-              ref.read(allChatsProvider.notifier).fetchChats(),
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+          color: AppColors.primary,
+          onRefresh: () => ref.read(allChatsProvider.notifier).fetchChats(),
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             itemCount: chats.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               final chat = chats[index];
-              print("Chat: ${chat.name}, Time Raw: ${chat.lastTime}");
-              final isUnread =
-              unreadChats.contains(chat.conversationId);
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: isUnread
-                      ? Colors.blueAccent.withOpacity(0.08)
-                      : Colors.white.withOpacity(0.03),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: ListTile(
-                  onTap: () {
-                    ref
-                        .read(unreadChatProvider.notifier)
-                        .markRead(chat.conversationId);
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ChatPage(
-                          name: chat.name,
-                          image: chat.avatar,
-                          conversationId: chat.conversationId,
-                          receiverId: chat.userId,
-                        ),
-                      ),
-                    );
-                  },
-                  leading: AppAvatar(url: chat.avatar, name: chat.name),
-                  title: Text(
-                    chat.name,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight:
-                      isUnread ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  subtitle: Text(
-                    chat.lastMessage ?? "Start chatting",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: isUnread ? Colors.white : Colors.white54,
-                      fontWeight:
-                      isUnread ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end, // Align to the right
-                    children: [
-                      Text(
-                        _formatTime(chat.lastTime),
-                        style: const TextStyle(
-                          color: Colors.white70, // Made brighter for visibility
-                          fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      if (isUnread)
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.blueAccent,
-                            shape: BoxShape.circle,
-                          ),
-                        )
-                    ],
-                  ),
-                ),
-              );
+              final isUnread = unreadChats.contains(chat.conversationId);
+              return _buildModernChatCard(chat, isUnread);
             },
           ),
         );
       },
-      loading: () =>
-      const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.cloud_off, color: Colors.white30, size: 40),
-            const SizedBox(height: 10),
-            const Text(
-              "Chats not loaded",
-              style: TextStyle(color: Colors.white54, fontSize: 16),
-            ),
-            const SizedBox(height: 15),
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => _buildErrorState(),
+    );
+  }
 
-            ElevatedButton.icon(
-              onPressed: () {
-                ref.read(allChatsProvider.notifier).fetchChats();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text("Retry"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
+  Widget _buildModernChatCard(dynamic chat, bool isUnread) {
+    return GestureDetector(
+      onTap: () {
+        ref.read(unreadChatProvider.notifier).markRead(chat.conversationId);
+        Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(name: chat.name, image: chat.avatar, conversationId: chat.conversationId, receiverId: chat.userId)));
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isUnread ? AppColors.surface : AppColors.cardBg.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isUnread ? AppColors.primary.withOpacity(0.3) : Colors.white.withOpacity(0.03)),
+        ),
+        child: Row(
+          children: [
+            Stack(
+              children: [
+                AppAvatar(url: chat.avatar, name: chat.name, radius: 28),
+                if (isUnread)
+                  Positioned(
+                    right: 0, top: 0,
+                    child: Container(
+                      width: 14, height: 14,
+                      decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle, border: Border.all(color: AppColors.scaffoldBg, width: 2)),
+                    ),
+                  )
+              ],
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(chat.name, style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: isUnread ? FontWeight.bold : FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(chat.lastMessage ?? "Tap to chat", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isUnread ? AppColors.textPrimary.withOpacity(0.9) : AppColors.textSecondary, fontSize: 14)),
+                ],
               ),
             ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(_formatTime(chat.lastTime), style: TextStyle(color: isUnread ? AppColors.primary : AppColors.textMuted, fontSize: 12, fontWeight: isUnread ? FontWeight.bold : FontWeight.normal)),
+                const SizedBox(height: 8),
+                if (isUnread)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
+                    child: const Text("NEW", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
+                  )
+              ],
+            )
           ],
         ),
       ),
     );
   }
 
+  // --- Utility Widgets ---
+  Widget _buildModernListTile({required VoidCallback onTap, required Widget leading, required String title, required String subtitle}) {
+    return ListTile(
+      onTap: onTap,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      tileColor: AppColors.surface.withOpacity(0.5),
+      leading: leading,
+      title: Text(title, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+      trailing: const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textMuted, size: 14),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.cloud_off_rounded, color: AppColors.error.withOpacity(0.5), size: 60),
+          const SizedBox(height: 16),
+          const Text("Connection lost", style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+          const SizedBox(height: 20),
+          TextButton.icon(
+            onPressed: () => ref.read(allChatsProvider.notifier).fetchChats(),
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text("Try Again"),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          )
+        ],
+      ),
+    );
+  }
 
   String _formatTime(String? timeStr) {
     if (timeStr == null || timeStr.isEmpty) return "";
-
     try {
-      // Parse the UTC string from the server and convert to the user's local time
       final DateTime serverDate = DateTime.parse(timeStr).toLocal();
       final DateTime now = DateTime.now();
-
-      // Check if the message was sent today
-      if (serverDate.year == now.year &&
-          serverDate.month == now.month &&
-          serverDate.day == now.day) {
-        // Returns "1:23 PM" or "13:23" depending on phone settings
-        return DateFormat.jm().format(serverDate);
-      }
-
-      // Check if it was sent yesterday
+      if (serverDate.year == now.year && serverDate.month == now.month && serverDate.day == now.day) return DateFormat.jm().format(serverDate);
       final yesterday = now.subtract(const Duration(days: 1));
-      if (serverDate.year == yesterday.year &&
-          serverDate.month == yesterday.month &&
-          serverDate.day == yesterday.day) {
-        return "Yesterday";
-      }
-
-      // Otherwise, show the date (e.g., Mar 21)
+      if (serverDate.year == yesterday.year && serverDate.month == yesterday.month && serverDate.day == yesterday.day) return "Yesterday";
       return DateFormat.MMMd().format(serverDate);
-    } catch (e) {
-      // If parsing fails, return a fallback or empty
-      return "";
-    }
+    } catch (e) { return ""; }
   }
 
   Widget _buildSearchResults(List<dynamic> results) {
-    return ListView.builder(
+    return ListView.separated(
+      padding: const EdgeInsets.all(20),
       itemCount: results.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final user = results[index];
-
-        return ListTile(
-          leading: AppAvatar(url: user["avatar"], name: user["name"]),
-          title:
-          Text(user["name"], style: const TextStyle(color: Colors.white)),
+        return _buildModernListTile(
           onTap: () async {
-            final int? id = await ref
-                .read(chatSearchProvider.notifier)
-                .startConversation(user["user_id"]);
-
+            final id = await ref.read(chatSearchProvider.notifier).startConversation(user["user_id"]);
             if (id != null && context.mounted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChatPage(
-                    name: user["name"],
-                    image: user["avatar"],
-                    conversationId: id,
-                    receiverId: user["user_id"],
-                  ),
-                ),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(name: user["name"], image: user["avatar"], conversationId: id, receiverId: user["user_id"])));
             }
           },
+          leading: AppAvatar(url: user["avatar"], name: user["name"]),
+          title: user["name"],
+          subtitle: "View Profile",
         );
       },
     );
   }
 }
 
-/// -------------------------------
-/// AVATAR WIDGET
-/// -------------------------------
 class AppAvatar extends StatelessWidget {
   final String? url;
   final String? name;
   final double radius;
-
   const AppAvatar({super.key, this.url, this.name, this.radius = 24});
 
   @override
   Widget build(BuildContext context) {
-    final String initial =
-    (name != null && name!.isNotEmpty) ? name![0].toUpperCase() : "?";
+    final String initial = (name != null && name!.isNotEmpty) ? name![0].toUpperCase() : "?";
+    final bool hasImage = url != null && url!.isNotEmpty;
 
-    if (url == null || url!.isEmpty) {
-      return CircleAvatar(
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: AppColors.blueGradient,
+      ),
+      child: CircleAvatar(
         radius: radius,
-        backgroundColor: Colors.blueAccent.withOpacity(0.2),
-        child: Text(initial,
-            style: const TextStyle(
-                color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-      );
-    }
-
-    final bool isSvg = url!.toLowerCase().endsWith('.svg');
-    final String fullUrl =
-    url!.startsWith('http') ? url! : "$baseUrlImage${url!}";
-
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: Colors.blueAccent.withOpacity(0.1),
-      child: ClipOval(
-        child: isSvg
-            ? SvgPicture.network(
-          fullUrl,
-          width: radius * 2,
-          height: radius * 2,
-          fit: BoxFit.cover,
-        )
-            : Image.network(
-          fullUrl,
-          width: radius * 2,
-          height: radius * 2,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Text(initial),
+        backgroundColor: AppColors.surface,
+        child: ClipOval(
+          child: !hasImage
+              ? Text(initial, style: TextStyle(color: AppColors.accentBlue, fontWeight: FontWeight.bold, fontSize: radius * 0.8))
+              : (url!.toLowerCase().endsWith('.svg')
+              ? SvgPicture.network("${url!.startsWith('http') ? '' : baseUrlImage}$url", width: radius * 1.5, height: radius * 1.5, fit: BoxFit.cover)
+              : Image.network("${url!.startsWith('http') ? '' : baseUrlImage}$url", width: radius * 1.5, height: radius * 1.5, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Text(initial))),
         ),
       ),
     );

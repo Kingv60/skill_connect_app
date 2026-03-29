@@ -1,14 +1,18 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillconnect/New/All_video_of_course.dart';
 import 'package:skillconnect/New/video_upload_page.dart';
 
+// Assuming these are defined in your project
 import 'Constants/constants.dart';
 import 'New/VideoPlayfor_course.dart';
 import 'New/edit_page.dart';
 import 'Provider/profile_provider.dart';
+import 'Services/AppColors.dart';
 import 'Services/api-service.dart';
+
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -17,335 +21,324 @@ class ProfilePage extends ConsumerStatefulWidget {
   ConsumerState<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends ConsumerState<ProfilePage> {
-
-  // Theme colors
-  Color backgroundColor = const Color(0xff262626);
-  Color textColor = Colors.white;
+class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProviderStateMixin {
+  Color backgroundColor = AppColors.scaffoldBg;
+  Color textColor = AppColors.textPrimary;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     loadColors();
   }
 
   Future<void> loadColors() async {
     final prefs = await SharedPreferences.getInstance();
-
     int? bg = prefs.getInt('bgColor');
     int? text = prefs.getInt('textColor');
-
     if (bg != null) backgroundColor = Color(bg);
     if (text != null) textColor = Color(text);
-
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
+  void _showThemeDialog() {
+    final TextEditingController bgController = TextEditingController(
+        text: '#${backgroundColor.value.toRadixString(16).substring(2).toUpperCase()}');
+    final TextEditingController textController = TextEditingController(
+        text: '#${textColor.value.toRadixString(16).substring(2).toUpperCase()}');
 
-
-  @override
-  Widget build(BuildContext context) {
-    /// Widget for the Recent Videos Tab
-    /// Widget for the Recent Videos Tab
-    Widget _buildRecentVideosTab() {
-      return FutureBuilder<List<dynamic>>(
-        // Use the new API function we created
-        future: ApiService().getAllVideosLatest(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Colors.blue));
-          }
-
-          if (snapshot.hasError) {
-            return const Center(child: Text("Error loading videos", style: TextStyle(color: Colors.red)));
-          }
-
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.video_library_outlined, color: Colors.white24, size: 50),
-                  SizedBox(height: 10),
-                  Text("No videos yet", style: TextStyle(color: Colors.white54)),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, index) => VideoListItem(video: snapshot.data![index]),
-          );
-        },
-      );
-    }
-
-    /// Widget for the Playlist/Courses Tab
-    Widget _buildPlaylistCoursesTab() {
-      final profile = ref.watch(profileProvider);
-      return FutureBuilder<List<dynamic>>(
-        future: ApiService().getMyCreatedCourses(), // Calling your new API function
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No courses created yet", style: TextStyle(color: Colors.white54)));
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, index) {
-              final course = snapshot.data![index];
-              return CourseListItem(course: course, profile: profile,);
-            },
-          );
-        },
-      );
-    }
-    final profile = ref.watch(profileProvider);
-
-    if (profile == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-    return Scaffold(
-      body: Stack(
-        children: [
-          /// Background
-          Container(color: backgroundColor),
-
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                /// Top Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(height: 30,width: 30,decoration: BoxDecoration(shape: BoxShape.circle,border: Border.all(width: 1,color: Colors.white)),child: const Icon(Icons.close, color: Colors.white, size: 20)),
-                      ),
-                      Text(
-                        profile.username,
-                        style: TextStyle(
-                            color: textColor,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600),
-                      ),
-                      GestureDetector(
-                        onTap: () {}, // Optional: theme menu
-                        child: Icon(Icons.more_vert, color: textColor),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                /// Profile Row
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Container(
-                        height: 85,
-                        width: 85,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: textColor, width: 2),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(25),
-                          child:  AppAvatar(url: profile.avatarUrl),
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              profile.name,
-                              style: TextStyle(
-                                  color: textColor,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16),
-                            ),
-                            Text(
-                                "${profile.role}\n${profile.bio}",
-                              style: TextStyle(
-                                  color: textColor.withOpacity(0.7)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                /// Skills
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Skills",
-                        style: TextStyle(
-                            color: textColor, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: profile.skills
-                            .map((skill) => SkillChip(text: skill))
-                            .toList(),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                /// Buttons
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _ActionButton(
-                          title: "Edit Profile",
-                          textColor: textColor,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                const EditProfilePage(),
-                              ),
-                            ).then((_) {
-                              ref.read(profileProvider.notifier).refreshProfile();
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _ActionButton(
-                          title: "Video Upload",
-                          textColor: textColor,
-                          onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (context)=>UploadMediaPage()));
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Add this to your SafArea Column after the "Buttons" Padding:
-
-                const SizedBox(height: 20),
-
-                /// --- NEW VIDEO SECTION ---
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    "My Videos",
-                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-
-
-                DefaultTabController(
-                  length: 2,
-                  child: Expanded(
-                    child: Column(
-                      children: [
-
-                        /// TAB BAR
-                        const TabBar(
-                          indicatorColor: Colors.blue,
-                          labelColor: Colors.white,
-                          unselectedLabelColor: Colors.white54,
-                          tabs: [
-                            Tab(text: "Recent"),
-                            Tab(text: "Playlist"),
-                          ],
-                        ),
-
-                        /// TAB CONTENT
-                        /// TAB CONTENT
-                        Expanded(
-                          child: TabBarView(
-                            children: [
-                              /// 1. RECENT TAB (Videos)
-                              _buildRecentVideosTab(),
-
-                              /// 2. PLAYLIST TAB (Courses) - UPDATED
-                              _buildPlaylistCoursesTab(),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+    showDialog(
+      context: context,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: AlertDialog(
+          backgroundColor: AppColors.surface.withOpacity(0.9),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: Colors.white10)),
+          title: const Text("Custom Appearance", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildHexField("Background Color", bgController),
+              const SizedBox(height: 15),
+              _buildHexField("Text Color", textController),
+            ],
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              onPressed: () => _applyTheme(bgController.text, textController.text),
+              child: const Text("Update Theme"),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  void _applyTheme(String bgHex, String textHex) async {
+    try {
+      Color parseHex(String hex) {
+        hex = hex.replaceFirst('#', '');
+        if (hex.length == 6) hex = 'FF$hex';
+        return Color(int.parse(hex, radix: 16));
+      }
+      final newBg = parseHex(bgHex);
+      final newText = parseHex(textHex);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('bgColor', newBg.value);
+      await prefs.setInt('textColor', newText.value);
+      setState(() { backgroundColor = newBg; textColor = newText; });
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid Hex Code!")));
+    }
+  }
+
+  Widget _buildHexField(String label, TextEditingController controller) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: AppColors.textSecondary),
+        filled: true,
+        fillColor: Colors.black26,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = ref.watch(profileProvider);
+
+    if (profile == null) {
+      return const Scaffold(backgroundColor: AppColors.scaffoldBg, body: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+    }
+
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      body: RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: () async {
+          await ref.read(profileProvider.notifier).refreshProfile();
+          setState(() {});
+        },
+        child: CustomScrollView(
+          slivers: [
+            // --- MODERN SLIVER APP BAR ---
+            SliverAppBar(
+              expandedHeight: 220,
+              backgroundColor: backgroundColor,
+              pinned: true,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+                onPressed: () => Navigator.pop(context),
+              ),
+              actions: [
+                IconButton(icon: Icon(Icons.palette_outlined, color: textColor), onPressed: _showThemeDialog),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                background: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.primary.withOpacity(0.2), Colors.transparent],
+                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 20),
+                      // Avatar with Glow
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(shape: BoxShape.circle, gradient: AppColors.primaryGradient),
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundColor: AppColors.surface,
+                          child: ClipOval(child: AppAvatar(url: profile.avatarUrl)),
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(profile.name, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 22)),
+                      Text("@${profile.username}", style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // --- PROFILE DETAILS SECTION ---
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    // Bio/Role Badge
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.work_outline, color: AppColors.primary, size: 16),
+                              const SizedBox(width: 8),
+                              Text(profile.role, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(profile.bio, style: TextStyle(color: textColor.withOpacity(0.8), height: 1.4)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text("Expertise", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: profile.skills.map((skill) => SkillChip(text: skill)).toList(),
+                    ),
+                    const SizedBox(height: 13),
+                    Row(
+                      children: [
+                        Expanded(child: _ActionButton(title: "Edit Profile", icon: Icons.edit_note, onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const EditProfilePage())).then((_) => ref.read(profileProvider.notifier).refreshProfile());
+                        })),
+                        const SizedBox(width: 12),
+                        Expanded(child: _ActionButton(title: "Upload", icon: Icons.cloud_upload_outlined, isPrimary: true, onTap: () async {
+                          final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => UploadMediaPage()));
+                          if (result == true) {
+                            ref.read(profileProvider.notifier).refreshProfile();
+                            setState(() {});
+                          }
+                        })),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ),
+              ),
+            ),
+
+            // --- TAB SECTION ---
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SliverAppBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  indicatorColor: AppColors.primary,
+                  indicatorSize: TabBarIndicatorSize.label,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  tabs: const [Tab(text: "My Videos"), Tab(text: "Courses")],
+                ),
+                backgroundColor,
+              ),
+            ),
+
+            SliverFillRemaining(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildRecentVideosTab(),
+                  _buildPlaylistCoursesTab(profile),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentVideosTab() {
+    return FutureBuilder<List<dynamic>>(
+      future: ApiService().getAllVideosLatest(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return _buildEmptyState("No videos found");
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: snapshot.data!.length,
+          itemBuilder: (context, index) => VideoListItem(video: snapshot.data![index]),
+        );
+      },
+    );
+  }
+
+  Widget _buildPlaylistCoursesTab(profile) {
+    return FutureBuilder<List<dynamic>>(
+      future: ApiService().getMyCreatedCourses(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return _buildEmptyState("No courses created");
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: snapshot.data!.length,
+          itemBuilder: (context, index) => CourseListItem(course: snapshot.data![index], profile: profile),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState(String msg) {
+    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      const Icon(Icons.folder_open, color: Colors.white12, size: 60),
+      const SizedBox(height: 10),
+      Text(msg, style: const TextStyle(color: AppColors.textSecondary)),
+    ]));
+  }
 }
 
-/// Button
+// --- SUPPORTING WIDGETS ---
+
 class _ActionButton extends StatelessWidget {
   final String title;
-  final VoidCallback? onTap;
-  final Color textColor;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool isPrimary;
 
-  const _ActionButton({
-    required this.title,
-    this.onTap,
-    required this.textColor,
-  });
+  const _ActionButton({required this.title, required this.icon, required this.onTap, this.isPrimary = false});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 36,
-        alignment: Alignment.center,
+        height: 48,
         decoration: BoxDecoration(
-          border: Border.all(color: textColor.withOpacity(0.6)),
-          borderRadius: BorderRadius.circular(8),
+          gradient: isPrimary ? AppColors.primaryGradient : null,
+          color: isPrimary ? null : AppColors.surface,
+          borderRadius: BorderRadius.circular(15),
+          border: isPrimary ? null : Border.all(color: Colors.white10),
+          boxShadow: isPrimary ? [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))] : null,
         ),
-        child: Text(
-          title,
-          style: TextStyle(
-            color: textColor,
-            fontWeight: FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Skill Chip
 class SkillChip extends StatelessWidget {
   final String text;
   const SkillChip({super.key, required this.text});
@@ -353,19 +346,13 @@ class SkillChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.blue,
-        borderRadius: BorderRadius.circular(15),
+        color: AppColors.primary.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3)),
       ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+      child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -376,99 +363,34 @@ class VideoListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Correct the Keys to match your "all-latest" JSON
     final String thumbUrl = "$baseUrlImage${video['thumbnail_url'] ?? ""}";
     final String videoUrl = "$baseUrlImage${video['video_url'] ?? ""}";
-    final String videoTitle = video['name'] ?? "Untitled Video"; // Changed from 'caption' to 'name'
+    final String videoTitle = video['name'] ?? "Untitled";
 
-    // 2. Format Date logic
-    String uploadTime = "Just now";
-    if (video['created_at'] != null) { // Match 'created_at' from JSON
-      try {
-        DateTime dt = DateTime.parse(video['created_at']);
-        // Format as "Mar 23, 2026" or similar
-        uploadTime = "${dt.day}/${dt.month}/${dt.year}";
-      } catch (e) {
-        uploadTime = "Recent";
-      }
-    }
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => YouTubePlayerPage(
-              videoUrl: videoUrl,
-              title: videoTitle,
-            ),
-          ),
-        );
-      },
+    return InkWell(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => YouTubePlayerPage(videoUrl: videoUrl, title: videoTitle))),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
+        margin: const EdgeInsets.only(bottom: 20),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            /// --- THUMBNAIL ---
             Stack(
               alignment: Alignment.center,
               children: [
-                Container(
-                  width: 130, // Slightly wider for modern look
-                  height: 80,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    image: DecorationImage(
-                      image: NetworkImage(thumbUrl),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(thumbUrl, width: 120, height: 75, fit: BoxFit.cover),
                 ),
-                // Overlay to show it's a video
-                Container(
-                  width: 130,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.black26,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 35),
-                ),
+                const Icon(Icons.play_circle_fill, color: Colors.white, size: 30),
               ],
             ),
-
-            const SizedBox(width: 12),
-
-            /// --- DETAILS ---
+            const SizedBox(width: 15),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    videoTitle,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, color: Colors.white38, size: 12),
-                      const SizedBox(width: 4),
-                      Text(
-                        uploadTime,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
+                  Text(videoTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 5),
+                  const Text("Course Video", style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                 ],
               ),
             ),
@@ -486,93 +408,55 @@ class CourseListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Extracting data from the API Map
-    final int courseId = course['course_id'] ?? 0; // Use course_id from your API
-    final String title = course['title'] ?? "Untitled Course";
     final String thumbUrl = baseUrlImage + (course['thumbnail_url'] ?? "");
-    final String level = course['level'] ?? "Beginner";
-    final String language = course['language'] ?? "English";
-
-    return GestureDetector(
-      onTap: () {
-        // Navigate to the details page passing the courseId
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CourseVideoPage(profile: profile, course_id: courseId,),
-          ),
-        );
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.03),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            /// --- COURSE THUMBNAIL ---
-            Container(
-              width: 100,
-              height: 70,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                image: DecorationImage(
-                  image: NetworkImage(thumbUrl),
-                  fit: BoxFit.cover,
-                ),
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: Colors.black26,
-                ),
-                child: const Icon(Icons.playlist_play, color: Colors.white, size: 30),
-              ),
-            ),
-            const SizedBox(width: 16),
-
-            /// --- COURSE INFO ---
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      _infoChip(level, Colors.orangeAccent),
-                      const SizedBox(width: 8),
-                      _infoChip(language, Colors.blueAccent),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _infoChip(String text, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        border: Border.all(color: color.withOpacity(0.5)),
-        borderRadius: BorderRadius.circular(4),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
       ),
-      child: Text(
-        text,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(12),
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.network(thumbUrl, width: 80, height: 60, fit: BoxFit.cover),
+        ),
+        title: Text(course['title'] ?? "Course", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Row(
+            children: [
+              _miniChip(course['level'] ?? "Beginner", AppColors.primary),
+              const SizedBox(width: 8),
+              _miniChip(course['language'] ?? "EN", Colors.white24),
+            ],
+          ),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => CourseVideoPage(profile: profile, course_id: course['course_id']))),
       ),
     );
   }
+
+  Widget _miniChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(6), border: Border.all(color: color.withOpacity(0.4))),
+      child: Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
+  }
+}
+
+// Helper for TabBar Pinned Header
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverAppBarDelegate(this._tabBar, this.bgColor);
+  final TabBar _tabBar;
+  final Color bgColor;
+  @override double get minExtent => _tabBar.preferredSize.height;
+  @override double get maxExtent => _tabBar.preferredSize.height;
+  @override Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(color: bgColor, child: _tabBar);
+  }
+  @override bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => false;
 }
