@@ -4,14 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:intl/intl.dart';
-// Assuming AppColors is in your constants.dart or similar
 import 'Constants/constants.dart';
 import '../Provider/chat_provider.dart';
 import '../Provider/search_provider.dart';
 import 'Services/AppColors.dart';
 import 'message.dart';
 
-// --- (UnreadChatProvider and Notifier remain unchanged) ---
+// --- UnreadChatProvider remains unchanged ---
 final unreadChatProvider = StateNotifierProvider<UnreadChatNotifier, Set<int>>((ref) => UnreadChatNotifier());
 class UnreadChatNotifier extends StateNotifier<Set<int>> {
   UnreadChatNotifier() : super({});
@@ -38,138 +37,79 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.dispose();
   }
 
-  // --- MODERNIZED USER SELECTION SHEET ---
-  void _showUserSelectionSheet(BuildContext context) {
-    ref.read(chatSearchProvider.notifier).searchUsers("");
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppColors.drawerBg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-            border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
-          ),
-          child: Consumer(
-            builder: (context, ref, child) {
-              final users = ref.watch(chatSearchProvider);
-              return ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 12),
-                    Container(height: 4, width: 40, decoration: BoxDecoration(color: AppColors.textMuted, borderRadius: BorderRadius.circular(10))),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Text("New Conversation", style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                    ),
-                    Expanded(
-                      child: Builder(
-                        builder: (context) {
-                          // 1. If the list is empty, we show either a loader or the "Not found" text
-                          if (users.isEmpty) {
-                            // You can check if the search controller is empty to decide
-                            // whether to show a "Search for someone" prompt or "No user found"
-                            return Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.person_search_rounded,
-                                      size: 60, color: AppColors.textMuted.withOpacity(0.5)),
-                                  const SizedBox(height: 16),
-                                  const Text(
-                                    "No user found",
-                                    style: TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }
+  @override
+  Widget build(BuildContext context) {
+    final chatsAsync = ref.watch(allChatsProvider);
+    final searchResults = ref.watch(chatSearchProvider);
+    final isSearching = _searchController.text.isNotEmpty;
 
-                          // 2. If list has data, show the ListView
-                          return ListView.separated(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            itemCount: users.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final user = users[index];
-                              return _buildModernListTile(
-                                onTap: () async {
-                                  final id = await ref
-                                      .read(chatSearchProvider.notifier)
-                                      .startConversation(user["user_id"]);
-                                  if (context.mounted && id != null) {
-                                    Navigator.pop(context);
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => ChatPage(
-                                          name: user["name"],
-                                          image: user["avatar"],
-                                          conversationId: id,
-                                          receiverId: user["user_id"],
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                                leading: AppAvatar(url: user["avatar"], name: user["name"], radius: 26),
-                                title: user["name"],
-                                subtitle: "Start a new chat",
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppColors.scaffoldBg,
+        floatingActionButton: _buildFab(),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(),
+
+              // Only show Slider Tabs if not searching
+              if (!isSearching) _buildSliderTabs(),
+
+              Expanded(
+                child: isSearching
+                    ? _buildSearchResults(searchResults)
+                    : TabBarView(
+                  children: [
+                    _buildChatList(chatsAsync, showProjects: false), // Direct
+                    _buildChatList(chatsAsync, showProjects: true),  // Groups/Projects
                   ],
                 ),
-              );
-            },
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final chatsAsync = ref.watch(allChatsProvider);
-    final searchResults = ref.watch(chatSearchProvider);
+  // --- NEW: SLIDER TAB DESIGN ---
+  Widget _buildSliderTabs() {
+    return Container(
+      // 1. Reduced vertical margin to 4 to save vertical space
+      margin: const EdgeInsets.symmetric(horizontal: 22, vertical: 4),
 
-    return Scaffold(
-      backgroundColor: AppColors.scaffoldBg,
-      floatingActionButton: Container(
-        decoration: BoxDecoration(
-          gradient: AppColors.primaryGradient,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
-        ),
-        child: FloatingActionButton(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
-          onPressed: () => _showUserSelectionSheet(context),
-        ),
+      // 2. Set explicit height (38 is a great "sweet spot" for slim tabs)
+      height: 38,
+
+      // 3. Reduced padding to 3 so the indicator has room to breathe
+      padding: const EdgeInsets.all(3),
+
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        // 4. Slightly reduced radius for a sharper, cleaner look
+        borderRadius: BorderRadius.circular(12),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: searchResults.isNotEmpty && _searchController.text.isNotEmpty
-                  ? _buildSearchResults(searchResults)
-                  : _buildChatList(chatsAsync),
-            ),
-          ],
+      child: TabBar(
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelColor: Colors.white,
+        unselectedLabelColor: AppColors.textMuted,
+
+        // 5. Reduced font size to 12 to match the shorter height
+        labelStyle: const TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
         ),
+
+        indicator: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          gradient: AppColors.primaryGradient,
+        ),
+        tabs: const [
+          Tab(text: "Direct"),
+          Tab(text: "Groups"),
+        ],
       ),
     );
   }
@@ -202,6 +142,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               controller: _searchController,
               style: const TextStyle(color: AppColors.textPrimary),
               onChanged: (val) {
+                setState(() {}); // Trigger rebuild to toggle TabBar/TabBarView
                 final query = val.trim();
                 if (query.length > 2) ref.read(chatSearchProvider.notifier).searchUsers(query);
                 else if (query.isEmpty) ref.read(chatSearchProvider.notifier).searchUsers("");
@@ -220,20 +161,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  Widget _buildChatList(AsyncValue chatsAsync) {
+  Widget _buildChatList(AsyncValue chatsAsync, {required bool showProjects}) {
     final unreadChats = ref.watch(unreadChatProvider);
     return chatsAsync.when(
       data: (chats) {
-        if (chats.isEmpty) return const Center(child: Text("No conversations yet", style: TextStyle(color: AppColors.textMuted)));
+        // FILTERING: Separation based on 'isProjectChat' from your model
+        final filteredChats = chats.where((chat) => chat.isProjectChat == showProjects).toList();
+
+        if (filteredChats.isEmpty) {
+          return Center(
+            child: Text(
+              showProjects ? "No project groups yet" : "No direct messages yet",
+              style: const TextStyle(color: AppColors.textMuted),
+            ),
+          );
+        }
+
         return RefreshIndicator(
           color: AppColors.primary,
           onRefresh: () => ref.read(allChatsProvider.notifier).fetchChats(),
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            itemCount: chats.length,
+            itemCount: filteredChats.length,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
-              final chat = chats[index];
+              final chat = filteredChats[index];
               final isUnread = unreadChats.contains(chat.conversationId);
               return _buildModernChatCard(chat, isUnread);
             },
@@ -252,7 +204,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(name: chat.name, image: chat.avatar, conversationId: chat.conversationId, receiverId: chat.userId)));
       },
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12,vertical: 10),
         decoration: BoxDecoration(
           color: isUnread ? AppColors.surface : AppColors.cardBg.withOpacity(0.5),
           borderRadius: BorderRadius.circular(20),
@@ -262,7 +214,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             Stack(
               children: [
-                AppAvatar(url: chat.avatar, name: chat.name, radius: 28),
+                AppAvatar(url: chat.avatar, name: chat.name, radius: 20),
                 if (isUnread)
                   Positioned(
                     right: 0, top: 0,
@@ -278,7 +230,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(chat.name, style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: isUnread ? FontWeight.bold : FontWeight.w600)),
+                  Text(chat.name, style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: isUnread ? FontWeight.bold : FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(chat.lastMessage ?? "Tap to chat", maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isUnread ? AppColors.textPrimary.withOpacity(0.9) : AppColors.textSecondary, fontSize: 14)),
                 ],
@@ -303,7 +255,82 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-  // --- Utility Widgets ---
+  Widget _buildFab() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: FloatingActionButton(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),
+        onPressed: () => _showUserSelectionSheet(context),
+      ),
+    );
+  }
+
+  // --- (Keeping all your other helper methods: _showUserSelectionSheet, _buildErrorState, etc.) ---
+  void _showUserSelectionSheet(BuildContext context) {
+    ref.read(chatSearchProvider.notifier).searchUsers("");
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.drawerBg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+          ),
+          child: Consumer(
+            builder: (context, ref, child) {
+              final users = ref.watch(chatSearchProvider);
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    Container(height: 4, width: 40, decoration: BoxDecoration(color: AppColors.textMuted, borderRadius: BorderRadius.circular(10))),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Text("New Conversation", style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    ),
+                    Expanded(
+                      child: users.isEmpty ? const Center(child: Text("No users found", style: TextStyle(color: AppColors.textMuted))) : ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        itemCount: users.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final user = users[index];
+                          return _buildModernListTile(
+                            onTap: () async {
+                              final id = await ref.read(chatSearchProvider.notifier).startConversation(user["user_id"]);
+                              if (context.mounted && id != null) {
+                                Navigator.pop(context);
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(name: user["name"], image: user["avatar"], conversationId: id, receiverId: user["user_id"])));
+                              }
+                            },
+                            leading: AppAvatar(url: user["avatar"], name: user["name"], radius: 26),
+                            title: user["name"],
+                            subtitle: "Start a new chat",
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildModernListTile({required VoidCallback onTap, required Widget leading, required String title, required String subtitle}) {
     return ListTile(
       onTap: onTap,
@@ -372,6 +399,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
+// AppAvatar remains exactly the same as your provided code
 class AppAvatar extends StatelessWidget {
   final String? url;
   final String? name;
@@ -385,10 +413,7 @@ class AppAvatar extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: AppColors.blueGradient,
-      ),
+      decoration: BoxDecoration(shape: BoxShape.circle, gradient: AppColors.blueGradient),
       child: CircleAvatar(
         radius: radius,
         backgroundColor: AppColors.surface,

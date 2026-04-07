@@ -5,11 +5,11 @@ import 'package:skillconnect/Constants/constants.dart';
 import 'package:skillconnect/Services/api-service.dart';
 import 'VideoPlayfor_course.dart';
 
-class CourseVideoPage extends StatelessWidget {
+class OtherPersonCourses extends StatelessWidget {
   final dynamic profile;
   final int course_id;
 
-  const CourseVideoPage({
+  const OtherPersonCourses({
     super.key,
     required this.profile,
     required this.course_id,
@@ -185,6 +185,7 @@ class CourseVideoPage extends StatelessWidget {
     final String videoUrl = "$baseUrlImage${video['video_url']}";
     final int video_id = video['video_id'];
     final String createdAT =video['created_at'];
+
 
     return InkWell(
       onTap: () {

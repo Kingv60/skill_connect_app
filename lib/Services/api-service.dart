@@ -8,9 +8,11 @@ import 'package:skillconnect/Model/globalFeed_model.dart';
 import '../Model/Post_model.dart';
 import '../Model/Project_Request_get.dart';
 import '../Model/chatModel.dart';
-import '../Model/home_page_reel.dart';
+import '../Model/liked_project.dart';
+import '../Model/media_post_model.dart';
 import '../Model/message_model.dart';
 import '../Model/my_project_model.dart';
+import '../Model/other_person_reel_model.dart';
 import '../Model/reel_model.dart';
 import '../Model/single_project_model.dart';
 import '../Model/startConservation.dart';
@@ -22,7 +24,7 @@ class ApiService {
   /// ===========================
   /// 🔹 BASE CONFIG
   /// ===========================
-  static const String baseUrl = "http://10.57.75.55:8000/api";
+  static const String baseUrl = "http://10.42.226.55:8000/api";
 
   static String? token;
   static int? userId;
@@ -249,6 +251,57 @@ class ApiService {
       }
     } catch (e) {
       return {"error": true, "message": e.toString()};
+    }
+  }
+
+
+  Future<List<dynamic>?> getPostComments(int postId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/posts/mediaPost/comments/$postId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['comments']; // This matches the "comments" key in your Express res.json
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching comments: $e");
+      return null;
+    }
+  }
+
+
+  /// Message reaction post
+
+  Future<Map<String, dynamic>?> toggleReaction(int messageId, String emoji) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/messages/react"),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token", // Ensure you have the user's token stored
+        },
+        body: jsonEncode({
+          "message_id": messageId,
+          "emoji": emoji,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        print("Error toggling reaction: ${response.body}");
+        return null;
+      }
+    } catch (e) {
+      print("ApiService Exception: $e");
+      return null;
     }
   }
 
@@ -515,7 +568,7 @@ class ApiService {
     }
   }
 
-  /// Ecroll Api
+  /// Enroll Api
   Future<Map<String, dynamic>> enrollInCourse(int courseId) async {
     final url = Uri.parse("$baseUrl/courses/enroll");
     print("📝 ENROLLING IN COURSE: $courseId");
@@ -545,6 +598,157 @@ class ApiService {
     }
   }
 
+
+  /// Video View Count API
+  Future<Map<String, dynamic>?> updateVideoView({
+    required int videoId,
+    required int userId,
+    required int watchedSeconds,
+  }) async {
+    final url = Uri.parse("$baseUrl/videos/view-update");
+   print("🌐 Calling API: $url");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "video_id": videoId,
+          "user_id": userId,
+          "watched_seconds": watchedSeconds,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        print("❌ Server Error: ${response.body}");
+        return null;
+      }
+    } catch (e) {
+
+      return null;
+    }
+  }
+
+  /// Get View Count and Details for a Specific Video
+  Future<Map<String, dynamic>?> getVideoViews(int videoId) async {
+    final url = Uri.parse("$baseUrl/videos/views/$videoId");
+
+    print("📡 Fetching Views for Video: $videoId");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      print("📡 View Status: ${response.statusCode}");
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+
+        // Return pura map taaki aap total_views aur details dono use kar sakein
+        return data;
+      } else {
+        print("❌ Server Error while fetching views: ${response.body}");
+        return null;
+      }
+    } catch (e) {
+      print("🚨 Connection Error (View API): $e");
+      return null;
+    }
+  }
+
+  /// Get Reel By user id for Other person profile
+  Future<List<OtherPersonReel>> fetchReelsByUserId(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/reels/$userId"),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        List<dynamic> body = jsonDecode(response.body);
+
+        // List of JSON ko List of OtherPersonReel mein map karna
+        return body
+            .map((dynamic item) => OtherPersonReel.fromJson(item))
+            .toList();
+      } else {
+        debugPrint("❌ Failed to load reels: ${response.statusCode}");
+        return [];
+      }
+    } catch (e) {
+      debugPrint("🔥 Api Error: $e");
+      return [];
+    }
+  }
+
+  /// Get Post by user id for other person
+  Future<List<dynamic>> getPostsByUserId(int userId) async {
+    try {
+      // URL ko apne backend ke hisaab se check karein
+      // Agar app.js mein prefix hai toh: "$baseUrl/api/posts/user/$userId"
+      final response = await http.get(
+        Uri.parse("$baseUrl/posts/mediaPost/user/$userId"),
+        headers: {
+          "Content-Type": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        // Backend se humne { "posts": [...] } bheja hai
+        return data['posts'] ?? [];
+      } else {
+        debugPrint("Server Error: ${response.statusCode}");
+        return [];
+      }
+    } catch (e) {
+      debugPrint("Error fetching user posts: $e");
+      return [];
+    }
+  }
+
+
+  /// Get Video By user id in other person profile
+  Future<List<dynamic>> getVideoByUserIdOther(int userId) async {
+
+    final url = Uri.parse("$baseUrl/videos/user/$userId");
+
+    print("📡 FETCHING VIDEOS FOR USER: $userId");
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          // Agar auth required hai toh niche wali line uncomment karein:
+          // "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data; // Yeh list of videos return karega
+      } else {
+        print("❌ SERVER ERROR: ${response.statusCode}");
+        return [];
+      }
+    } catch (e) {
+      print("❌ CONNECTION ERROR: $e");
+      return [];
+    }
+  }
 
   /// Get all Enrolled course
   Future<List<dynamic>> getMyJoinedCourses() async {
@@ -672,26 +876,42 @@ class ApiService {
   /// ===========================
   Future<List<dynamic>> getVideosByUserId(int userId) async {
     try {
-      final response = await http.get(
-        Uri.parse("$baseUrl/api/other-profile/videos/$userId"),
-      );
+      final url = Uri.parse("$baseUrl/videos/course/$userId");
+
+
+
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
-        List<dynamic> videos = json.decode(response.body);
+        // Decode the body
+        final decodedData = json.decode(response.body);
 
-        // Fix localhost in thumbnail and media URLs
+        List<dynamic> videos = [];
+
+        // Logic to handle if backend returns a Map {videos: []} or a List []
+        if (decodedData is List) {
+          videos = decodedData;
+        } else if (decodedData is Map && decodedData.containsKey('videos')) {
+          videos = decodedData['videos'];
+        }
+
+
         return videos.map((v) {
-          if (v['thumbnail_url'] != null) {
-            v['thumbnail_url'] = v['thumbnail_url'];
-          }
-          if (v['media_url'] != null) {
-            v['media_url'] = v['media_url'];
-          }
+          // You can add URL prefixing logic here if needed
           return v;
         }).toList();
+      } else {
+        // Print the status code and body to see what the server is complaining about
+
+
+        return [];
       }
-      return [];
-    } catch (e) {
+    } catch (e, stacktrace) {
+      // This prints the actual error (e.g., FormatException, SocketException)
+      print("---------- API ERROR ----------");
+      print("Error: $e");
+      print("Stacktrace: $stacktrace");
+      print("-------------------------------");
       return [];
     }
   }
@@ -827,8 +1047,13 @@ class ApiService {
   }
 
 
-  Future<List<GlobalFeed>> fetchGlobalFeed() async {
-    final url = Uri.parse('$baseUrl/projects/feed');
+  Future<List<GlobalFeed>> fetchGlobalFeed({bool filterBySkill = false}) async {
+    // Use replace to add the query parameter: ?filter_by_skill=true/false
+    final url = Uri.parse('$baseUrl/projects/feed').replace(
+      queryParameters: {
+        'filter_by_skill': filterBySkill.toString(),
+      },
+    );
 
     try {
       final response = await http.get(
@@ -841,7 +1066,6 @@ class ApiService {
 
       if (response.statusCode == 200) {
         List<dynamic> data = jsonDecode(response.body);
-        // This will now work because MyProject.fromJson handles username/avatarUrl
         return data.map((json) => GlobalFeed.fromJson(json)).toList();
       } else {
         throw Exception("Failed to load feed");
@@ -874,6 +1098,76 @@ class ApiService {
     } catch (e) {
       print("Exception caught: $e");
       return null;
+    }
+  }
+
+  /// Project Like Api
+  Future<Map<String, dynamic>?> toggleLikeProject(int projectId) async {
+    final url = Uri.parse('$baseUrl/projects/toggle-like');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'project_id': projectId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print(jsonDecode(response.body));
+        // Returns {"message": "Liked", "is_liked": true}
+        // or {"message": "Unliked", "is_liked": false}
+        return jsonDecode(response.body);
+      } else {
+        print('Error: ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Exception: $e');
+      return null;
+    }
+  }
+
+  /// Project Discard Api
+  Future<void> discardProject(int projectId) async {
+    final url = Uri.parse('$baseUrl/projects/discard');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'project_id': projectId}),
+      );
+
+      print(jsonDecode(response.body));
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to discard project');
+      }
+    } catch (e) {
+      throw Exception('Error calling discard API: $e');
+    }
+  }
+
+  /// Get Liked Project
+  Future<List<LikedProject>> getLikedProjects() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/projects/liked'),
+      headers: { 'Authorization': 'Bearer $token' },
+    );
+
+    if (response.statusCode == 200) {
+      List<dynamic> body = jsonDecode(response.body);
+      return body.map((item) => LikedProject.fromJson(item)).toList();
+    } else {
+      throw "Unable to retrieve liked projects.";
     }
   }
 
@@ -927,7 +1221,7 @@ class ApiService {
   }
 
   /// 2. GET GLOBAL MEDIA FEED
-  Future<List<Post>> fetchFeed(String token) async {
+  Future<List<Post>> fetchFeed() async {
     final url = Uri.parse('$baseUrl/posts/mediaPost/feed');
 
     try {
@@ -956,7 +1250,10 @@ class ApiService {
   Future<List<dynamic>> getMyMediaPosts() async {
     final url = Uri.parse("$baseUrl/posts/mediaPost/my");
     try {
-      final response = await http.get(url, headers: headers);
+      final response = await http.get(url,headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token', // Assuming it's a Bearer token
+      },);
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data["posts"] ?? [];
@@ -968,25 +1265,69 @@ class ApiService {
     }
   }
 
+  /// get Global feed
+  // 1. Change return type to Future<List<MyPost>>
+  Future<List<MyPost>> fetchMyPosts() async {
+    final response = await http.get(
+      Uri.parse("$baseUrl/posts/mediaPost/my"),
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    if (response.statusCode == 200) {
+      final List data = json.decode(response.body)['posts'];
+
+      // 2. Map using MyPost.fromJson
+      return data.map((json) => MyPost.fromJson(json)).toList();
+    } else {
+      throw Exception("Failed to load posts");
+    }
+  }
+
+  Future<bool> deleteMediaPost(int postId) async {
+    try {
+      final response = await http.delete(
+        // Ensure the URL matches your backend exactly
+        Uri.parse("$baseUrl/posts/mediaPost/delete/$postId"),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Content-Type": "application/json",
+        },
+      );
+
+      print("Delete Status: ${response.statusCode}");
+      print("Delete Response: ${response.body}");
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Delete Error: $e");
+      return false;
+    }
+  }
+
   /// 4. TOGGLE LIKE (Like/Unlike)
   Future<bool> togglePostLike(int postId) async {
     final url = Uri.parse("$baseUrl/posts/like");
+    print(url);
     try {
       final response = await http.post(
         url,
         headers: headers,
         body: jsonEncode({"post_id": postId}),
       );
+      print(response.body);
       return response.statusCode == 200;
+
     } catch (e) {
       print("LIKE ERROR: $e");
       return false;
     }
+
   }
 
   /// 5. ADD COMMENT
   Future<Map<String, dynamic>?> addPostComment(int postId, String text) async {
     final url = Uri.parse("$baseUrl/posts/comment");
+    print(url);
     try {
       final response = await http.post(
         url,
@@ -1003,18 +1344,6 @@ class ApiService {
     } catch (e) {
       print("COMMENT ERROR: $e");
       return null;
-    }
-  }
-
-  /// 6. DELETE MEDIA POST
-  Future<bool> deleteMediaPost(int postId) async {
-    final url = Uri.parse("$baseUrl/posts/mediaPost/$postId");
-    try {
-      final response = await http.delete(url, headers: headers);
-      return response.statusCode == 200;
-    } catch (e) {
-      print("DELETE POST ERROR: $e");
-      return false;
     }
   }
 
@@ -1179,6 +1508,25 @@ class ApiService {
       return false;
     }
   }
+  /// Get Other Person Course by user_id
+  Future<List<dynamic>> getCoursesByUserId(int userId) async {
+    final url = Uri.parse("$baseUrl/courses/user/$userId");
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        return data['courses']; // return course list
+      } else {
+        throw Exception("Failed to load courses");
+      }
+    } catch (e) {
+      print("Error fetching courses: $e");
+      return [];
+    }
+  }
 
   /// Get All reels
   Future<List<Reel>> fetchMyReels() async {
@@ -1205,7 +1553,10 @@ class ApiService {
     }
   }
 
-  ///
+
+
+
+  /// Get Reel
   Future<List<Reel>> fetchReels() async {
     final url = Uri.parse('$baseUrl/reels/feed');
 
@@ -1226,6 +1577,133 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('Connection error: $e');
+    }
+  }
+
+  // 1. POST VIEW: Send watch time to the server
+  // Called when a user watches a reel
+  // 1. Update Reel View (POST)
+// Sends watch duration to the server
+  Future<void> updateReelView(int reelId, int seconds) async {
+    final url = Uri.parse('$baseUrl/reels/$reelId/view');
+    final body = jsonEncode({'watchedseconds': seconds});
+
+    print("🚀 API CALL [POST]: $url");
+    print("📦 BODY: $body");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+
+      print("📥 RESPONSE [${response.statusCode}]: ${response.body}");
+
+      if (response.statusCode != 200) {
+        print("⚠️ Warning: View update failed");
+      }
+    } catch (e) {
+      print("❌ ERROR in updateReelView: $e");
+    }
+  }
+
+// 2. Get View Stats (GET)
+// Returns stats like total views for the analytics popup
+  Future<Map<String, dynamic>> getReelViewStats(int reelId) async {
+    final url = Uri.parse('$baseUrl/reels/$reelId/views');
+
+    print("🚀 API CALL [GET]: $url");
+
+    try {
+      final response = await http.get(url);
+
+      print("📥 RESPONSE [${response.statusCode}]: ${response.body}");
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception("Failed to load view stats");
+      }
+    } catch (e) {
+      print("❌ ERROR in getReelViewStats: $e");
+      rethrow;
+    }
+  }
+
+// 3. Toggle Like (POST)
+  Future<Map<String, dynamic>> toggleLikeReel(int reelId) async {
+    final url = Uri.parse('$baseUrl/reels/$reelId/like');
+
+    print("🚀 API CALL [POST]: $url");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print("📥 RESPONSE [${response.statusCode}]: ${response.body}");
+      return json.decode(response.body);
+    } catch (e) {
+      print("❌ ERROR in toggleLikeReel: $e");
+      rethrow;
+    }
+  }
+
+// 4. Get Comments (GET)
+  Future<List<dynamic>> getReelComments(int reelId) async {
+    final url = Uri.parse('$baseUrl/reels/$reelId/getcomments');
+
+    print("🚀 API CALL [GET]: $url");
+
+    try {
+      final response = await http.get(url);
+
+      print("📥 RESPONSE [${response.statusCode}]: ${response.body}");
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      throw Exception("Failed to load comments");
+    } catch (e) {
+      print("❌ ERROR in getReelComments: $e");
+      rethrow;
+    }
+  }
+
+// 5. Add Comment (POST)
+  Future<void> addComment(int reelId, String text) async {
+    final url = Uri.parse('$baseUrl/reels/$reelId/comment');
+    final body = jsonEncode({'comment_text': text});
+
+    print("🚀 API CALL [POST]: $url");
+    print("📦 BODY: $body");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: body,
+      );
+
+      print("📥 RESPONSE [${response.statusCode}]: ${response.body}");
+
+      if (response.statusCode != 201 && response.statusCode != 200) {
+        throw Exception("Failed to post comment");
+      }
+    } catch (e) {
+      print("❌ ERROR in addComment: $e");
+      rethrow;
     }
   }
   ///

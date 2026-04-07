@@ -78,6 +78,9 @@ class EnrolledCourseLessonsPage extends StatelessWidget {
     final String thumbUrl = "$baseUrlImage${video['thumbnail_url']}";
     final String videoUrl = "$baseUrlImage${video['video_url']}";
     final String title = video['title'] ?? "Lesson $displayIndex";
+    final int video_id = video['video_id'];
+    final String createdAT =video['created_at'];
+
 
     return ListTile(
       onTap: () {
@@ -86,7 +89,7 @@ class EnrolledCourseLessonsPage extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => YouTubePlayerPage(
               videoUrl: videoUrl,
-              title: title,
+              title: title, videoId: video_id, createAT: createdAT,
             ),
           ),
         );

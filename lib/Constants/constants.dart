@@ -2,8 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 
-const String baseUrl = "http://10.57.75.55:8000/api";
-const String baseUrlImage = "http://10.57.75.55:8000";
+const String baseUrl = "http://10.42.226.55:8000/api";
+const String baseUrlImage = "http://10.42.226.55:8000";
 
 
 class AppAvatar extends StatelessWidget {

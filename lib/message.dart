@@ -1,13 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:intl/intl.dart';
 import 'package:skillconnect/New/other_person_profile.dart';
 
 import '../Provider/message_provider.dart';
 import '../Services/api-service.dart';
 import 'Constants/constants.dart';
+import 'Model/message_model.dart';
 import 'Services/AppColors.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
@@ -29,41 +30,130 @@ class ChatPage extends ConsumerStatefulWidget {
 }
 
 class _ChatPageState extends ConsumerState<ChatPage> {
+  final List<String> _quickEmojis = ["❤️", "🙌", "🔥", "😮", "😢"];
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
+  // FIX: Added mounted check to prevent dispose error
+  void _handleReaction(int messageId, String emoji) async {
+    // 1. Call the API
+    final result = await ApiService().toggleReaction(messageId, emoji);
+
+    // 2. FIX: Check if the user is still on this screen before updating
+    if (!mounted) return;
+
+    if (result != null) {
+      // 3. Use refresh. Combined with skipLoadingOnRefresh below,
+      // this will update the emojis silently without a loading spinner.
+      ref.refresh(messagesProvider(widget.conversationId));
+    }
+  }
+
+  void _showReactionMenu(Offset tapPosition, int messageId) {
+    HapticFeedback.mediumImpact();
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.05),
+      builder: (context) => Stack(
+        children: [
+          Positioned(
+            left: tapPosition.dx > MediaQuery.of(context).size.width / 2 ? null : 20,
+            right: tapPosition.dx > MediaQuery.of(context).size.width / 2 ? 20 : null,
+            top: tapPosition.dy - 80,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [const BoxShadow(color: Colors.black26, blurRadius: 10)],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ..._quickEmojis.map((emoji) => GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        _handleReaction(messageId, emoji);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                      ),
+                    )),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showFullEmojiPicker(messageId);
+                      },
+                      child: const CircleAvatar(
+                        radius: 15,
+                        backgroundColor: Colors.white10,
+                        child: Icon(Icons.add, color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFullEmojiPicker(int messageId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => GridView.builder(
+        padding: const EdgeInsets.all(20),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 6),
+        itemCount: 12,
+        itemBuilder: (context, index) {
+          String emoji = ["👍", "🎉", "🤣", "✨", "🙏", "💯", "🎈", "🥳", "✅", "📍", "👑", "👀"][index];
+          return GestureDetector(
+            onTap: () {
+              setState(() => _quickEmojis[0] = emoji);
+              Navigator.pop(context);
+              _handleReaction(messageId, emoji);
+            },
+            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 28))),
+          );
+        },
+      ),
+    );
+  }
 
   Future<void> _onSendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
-
     _messageController.clear();
 
     try {
-      final newMessage = await ApiService().sendMessage(
-        widget.conversationId,
-        text,
-      );
+      final newMessage = await ApiService().sendMessage(widget.conversationId, text);
+
+      if (!mounted) return; // FIX: Prevents dispose error
 
       if (newMessage != null) {
-        ref
-            .read(messagesProvider(widget.conversationId).notifier)
-            .addMessage(newMessage);
+        ref.read(messagesProvider(widget.conversationId).notifier).addMessage(newMessage);
         _scrollToBottom();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to send: $e"), backgroundColor: AppColors.error),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to send: $e"), backgroundColor: AppColors.error),
+        );
+      }
     }
   }
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutQuart,
-      );
+      _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutQuart);
     }
   }
 
@@ -94,19 +184,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           children: [
             Expanded(
               child: messagesAsync.when(
+                skipLoadingOnRefresh: true, // FIX: Crucial for smooth reaction updates
                 data: (messages) {
-                  if (messages.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.chat_bubble_outline_rounded, size: 48, color: AppColors.textMuted.withOpacity(0.3)),
-                          const SizedBox(height: 12),
-                          const Text("Say hello!", style: TextStyle(color: AppColors.textMuted)),
-                        ],
-                      ),
-                    );
-                  }
+                  if (messages.isEmpty) return const Center(child: Text("Say hello!", style: TextStyle(color: AppColors.textMuted)));
                   return ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.fromLTRB(16, 110, 16, 20),
@@ -116,7 +196,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     itemBuilder: (context, index) {
                       final message = messages[messages.length - 1 - index];
                       final bool isMe = message.senderId == ApiService.userId;
-                      return ChatBubble(message: message.message, isMe: isMe);
+                      return ChatBubble(
+                        message: message,
+                        isMe: isMe,
+                        onLongPress: (position) => _showReactionMenu(position, message.messageId),
+                      );
                     },
                   );
                 },
@@ -140,24 +224,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           child: AppBar(
             backgroundColor: AppColors.scaffoldBg.withOpacity(0.7),
             elevation: 0,
-            centerTitle: false,
             leadingWidth: 70,
             leading: Center(
               child: GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: Container(
-                  height: 36,
-                  width: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
+                  height: 36, width: 36,
+                  decoration: BoxDecoration(color: AppColors.surface, shape: BoxShape.circle),
                   child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
                 ),
               ),
             ),
-            titleSpacing: 0,
             title: GestureDetector(
               onTap: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => OtherPersonProfile(userId: widget.receiverId))),
               child: Row(
@@ -167,23 +244,13 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        widget.name ?? "User",
-                        style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                      const Text(
-                        "Online",
-                        style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.w500),
-                      ),
+                      Text(widget.name ?? "User", style: const TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold)),
+                      const Text("Online", style: TextStyle(color: AppColors.success, fontSize: 11)),
                     ],
                   ),
                 ],
               ),
             ),
-            actions: [
-              IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary)),
-              const SizedBox(width: 8),
-            ],
           ),
         ),
       ),
@@ -193,52 +260,29 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Widget _buildModernAvatar(String? url) {
     return Container(
       padding: const EdgeInsets.all(1.5),
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: AppColors.primaryGradient,
-      ),
-      child: CircleAvatar(
-        radius: 19,
-        backgroundColor: AppColors.cardBg,
-        child: ClipOval(child: _buildAvatarImage(url)),
-      ),
+      decoration: const BoxDecoration(shape: BoxShape.circle, gradient: AppColors.primaryGradient),
+      child: CircleAvatar(radius: 19, backgroundColor: AppColors.cardBg, child: ClipOval(child: _buildAvatarImage(url))),
     );
   }
 
   Widget _buildModernInput() {
     return Container(
       padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
-      decoration: BoxDecoration(
-        color: AppColors.scaffoldBg,
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
-      ),
+      decoration: BoxDecoration(color: AppColors.scaffoldBg, border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05)))),
       child: Row(
         children: [
           Expanded(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
-              ),
+              decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(28)),
               child: Row(
                 children: [
                   const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.textMuted),
-                  ),
+                  IconButton(onPressed: () {}, icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.textMuted)),
                   Expanded(
                     child: TextField(
                       controller: _messageController,
                       style: const TextStyle(color: Colors.white, fontSize: 15),
-                      decoration: const InputDecoration(
-                        hintText: "Write a message...",
-                        hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 15),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
+                      decoration: const InputDecoration(hintText: "Write a message...", border: InputBorder.none),
                     ),
                   ),
                 ],
@@ -249,19 +293,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           GestureDetector(
             onTap: _onSendMessage,
             child: Container(
-              height: 52,
-              width: 52,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppColors.primaryGradient,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
+              height: 52, width: 52,
+              decoration: const BoxDecoration(shape: BoxShape.circle, gradient: AppColors.primaryGradient),
               child: const Icon(Icons.send_rounded, color: Colors.white, size: 24),
             ),
           ),
@@ -271,74 +304,61 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   }
 
   Widget _buildAvatarImage(String? url) {
-    if (url == null || url.isEmpty) {
-      return const Icon(Icons.person, color: Colors.white, size: 20);
-    }
+    if (url == null || url.isEmpty) return const Icon(Icons.person, color: Colors.white, size: 20);
     final fullUrl = url.startsWith("http") ? url : "$baseUrlImage$url";
-    if (url.toLowerCase().endsWith(".svg")) {
-      return SvgPicture.network(fullUrl, fit: BoxFit.cover);
-    }
-    return Image.network(
-      fullUrl,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white),
-    );
+    return url.toLowerCase().endsWith(".svg")
+        ? SvgPicture.network(fullUrl, fit: BoxFit.cover)
+        : Image.network(fullUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white));
   }
 }
 
 class ChatBubble extends StatelessWidget {
-  final String message;
+  final MessageModel message;
   final bool isMe;
+  final Function(Offset tapPosition) onLongPress;
 
-  const ChatBubble({super.key, required this.message, required this.isMe});
+  const ChatBubble({super.key, required this.message, required this.isMe, required this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-            decoration: BoxDecoration(
-              gradient: isMe ? AppColors.primaryGradient : null,
-              color: isMe ? null : AppColors.surface,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(20),
-                topRight: const Radius.circular(20),
-                bottomLeft: Radius.circular(isMe ? 20 : 4),
-                bottomRight: Radius.circular(isMe ? 4 : 20),
-              ),
-              boxShadow: [
-                if (isMe)
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.15),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  )
+    return GestureDetector(
+      onLongPressStart: (details) => onLongPress(details.globalPosition),
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                  decoration: BoxDecoration(
+                    gradient: isMe ? AppColors.primaryGradient : null,
+                    color: isMe ? null : AppColors.surface,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(20), topRight: const Radius.circular(20),
+                      bottomLeft: Radius.circular(isMe ? 20 : 4), bottomRight: Radius.circular(isMe ? 4 : 20),
+                    ),
+                  ),
+                  child: Text(message.message, style: TextStyle(color: isMe ? Colors.white : AppColors.textPrimary)),
+                ),
+                if (message.reactions.isNotEmpty)
+                  Positioned(
+                    bottom: -8, right: isMe ? 10 : null, left: isMe ? null : 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)),
+                      child: Text(message.reactions.map((e) => e.emoji).toSet().join(''), style: const TextStyle(fontSize: 12)),
+                    ),
+                  ),
               ],
             ),
-            child: Text(
-              message,
-              style: TextStyle(
-                color: isMe ? Colors.white : AppColors.textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w400,
-                height: 1.3,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Text(
-              "12:45 PM", // You can pass actual time here later
-              style: TextStyle(color: AppColors.textMuted, fontSize: 9),
-            ),
-          ),
-        ],
+            const SizedBox(height: 10),
+          ],
+        ),
       ),
     );
   }

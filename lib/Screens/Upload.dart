@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:skillconnect/BottomNav.dart';
 import 'package:video_player/video_player.dart';
 import '../Services/AppColors.dart';
 import '../Services/api-service.dart';
@@ -30,6 +31,11 @@ class _UploadScreenState extends State<UploadScreen> with SingleTickerProviderSt
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _requestPermission();
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        _loadGallery();
+      }
+    });
   }
 
   @override
@@ -52,25 +58,36 @@ class _UploadScreenState extends State<UploadScreen> with SingleTickerProviderSt
   }
 
   Future<void> _loadGallery() async {
-    // Use .all to get every media type available
+    // ✅ Check current tab: 0 = Post (All), 1 = Reel (Only Video)
+    RequestType type = _tabController.index == 0 ? RequestType.all : RequestType.video;
+
     List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(
-      type: RequestType.all,
+      type: type, // Yahan type switch ho jayega
       filterOption: FilterOptionGroup(
-        orders: [const OrderOption(type: OrderOptionType.createDate, asc: false)], // Newest first
+        orders: [const OrderOption(type: OrderOptionType.createDate, asc: false)],
       ),
     );
 
     if (albums.isNotEmpty) {
-      // Increase size or implement a ScrollController to load more pages
       List<AssetEntity> media = await albums.first.getAssetListPaged(page: 0, size: 500);
       setState(() {
         mediaList = media;
       });
-      if (media.isNotEmpty) _selectMedia(media.first);
+
+      // Default selection ke liye: Agar Reel tab par hain aur current selection video nahi hai,
+      // toh pehli video select kar lo.
+      if (media.isNotEmpty) {
+        _selectMedia(media.first);
+      }
     }
   }
 
   Future<void> _selectMedia(AssetEntity asset) async {
+    // Safety check for Reel tab
+    if (_tabController.index == 1 && asset.type != AssetType.video) {
+      return; // Reel tab par image select nahi hone dega
+    }
+
     final file = await asset.file;
     if (file == null) return;
 
@@ -115,6 +132,7 @@ class _UploadScreenState extends State<UploadScreen> with SingleTickerProviderSt
     if (mounted) {
       setState(() => isUploading = false);
       if (success) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context)=>IconOnlyBottomNav()));
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_tabController.index == 0 ? "Post Shared!" : "Reel Shared!"),
                 backgroundColor: AppColors.success)

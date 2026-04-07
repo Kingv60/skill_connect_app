@@ -1,5 +1,5 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:skillconnect/New/other_person_profile.dart';
 import 'package:skillconnect/Services/api-service.dart';
 import 'package:video_player/video_player.dart';
 import '../Model/reel_model.dart';
@@ -14,10 +14,10 @@ class VideoPage extends StatefulWidget {
 class _VideoPageState extends State<VideoPage> {
   final ApiService _reelService = ApiService();
   late PageController _pageController;
-
   List<Reel> _reels = [];
   final Map<int, VideoPlayerController> _controllers = {};
   bool _isLoading = true;
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -33,68 +33,84 @@ class _VideoPageState extends State<VideoPage> {
         _reels = fetchedReels;
         _isLoading = false;
       });
-      if (_reels.isNotEmpty) {
-        _initializeController(0);
-      }
+      if (_reels.isNotEmpty) _initializeController(0);
     } catch (e) {
-      debugPrint("Error loading reels: $e");
       setState(() => _isLoading = false);
     }
   }
 
   void _initializeController(int index) {
     if (_controllers.containsKey(index)) return;
-
-    final String fullUrl = _reels[index].reelUrl;
-    final controller = VideoPlayerController.networkUrl(Uri.parse(fullUrl))
-      ..initialize().then((_) {
-        setState(() {});
-      })
+    final controller = VideoPlayerController.networkUrl(Uri.parse(_reels[index].reelUrl))
+      ..initialize().then((_) => setState(() {}))
       ..setLooping(true);
-
     _controllers[index] = controller;
     if (index == 0) controller.play();
   }
 
+  void _handleLike(int index) async {
+    final reel = _reels[index];
+    try {
+      final response = await _reelService.toggleLikeReel(reel.reelId);
+      setState(() {
+        reel.isLiked = response['liked'];
+        reel.likesCount = response['liked'] ? reel.likesCount + 1 : reel.likesCount - 1;
+      });
+    } catch (e) {
+      debugPrint("Like error: $e");
+    }
+  }
+
+  void _showComments(int reelId, int index) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _CommentSection(
+        reelId: reelId,
+        apiService: _reelService,
+        onCommentAdded: () => setState(() => _reels[index].commentsCount++),
+      ),
+    );
+  }
+
   @override
   void dispose() {
-    _controllers.forEach((_, controller) => controller.dispose());
+    _controllers.forEach((_, c) => c.dispose());
     _pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator(color: Colors.blueAccent, strokeWidth: 2)),
-      );
-    }
-
-    if (_reels.isEmpty) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: Text("No reels found", style: TextStyle(color: Colors.white38))),
-      );
-    }
+    if (_isLoading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
+    if (_reels.isEmpty) return const Scaffold(backgroundColor: Colors.black, body: Center(child: Text("No reels found", style: TextStyle(color: Colors.white))));
 
     return Scaffold(
       backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
       body: PageView.builder(
         controller: _pageController,
         scrollDirection: Axis.vertical,
         itemCount: _reels.length,
         onPageChanged: (index) {
-          if (index + 1 < _reels.length) _initializeController(index + 1);
-          _controllers.forEach((i, controller) {
-            if (i == index) {
-              controller.play();
-            } else {
-              controller.pause();
-              controller.seekTo(Duration.zero);
+          // --- VIEW TRACKING LOGIC ---
+          if (_reels.isNotEmpty && _controllers.containsKey(_currentIndex)) {
+            final lastReel = _reels[_currentIndex];
+            final controller = _controllers[_currentIndex];
+
+            if (controller != null) {
+              int watchedSeconds = controller.value.position.inSeconds;
+              if (watchedSeconds > 0) {
+                _reelService.updateReelView(lastReel.reelId, watchedSeconds);
+              }
             }
+          }
+
+          _currentIndex = index;
+          if (index + 1 < _reels.length) _initializeController(index + 1);
+          _controllers.forEach((i, c) {
+            if (i == index) c.play();
+            else { c.pause(); c.seekTo(Duration.zero); }
           });
         },
         itemBuilder: (context, index) {
@@ -104,113 +120,64 @@ class _VideoPageState extends State<VideoPage> {
           return Stack(
             fit: StackFit.expand,
             children: [
-              /// 🎥 FULLSCREEN VIDEO
               controller != null && controller.value.isInitialized
                   ? GestureDetector(
-                onTap: () {
-                  controller.value.isPlaying ? controller.pause() : controller.play();
-                  setState(() {});
-                },
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: controller.value.size.width,
-                    height: controller.value.size.height,
-                    child: VideoPlayer(controller),
-                  ),
-                ),
+                onTap: () => setState(() => controller.value.isPlaying ? controller.pause() : controller.play()),
+                child: FittedBox(fit: BoxFit.cover, child: SizedBox(width: controller.value.size.width, height: controller.value.size.height, child: VideoPlayer(controller))),
               )
-                  : const Center(child: CircularProgressIndicator(color: Colors.white24)),
+                  : const Center(child: CircularProgressIndicator()),
 
-              /// 🔲 MODERN SOFT GRADIENT
-              IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      stops: const [0.0, 0.2, 0.7, 1.0],
-                      colors: [
-                        Colors.black.withOpacity(0.5),
-                        Colors.transparent,
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.8),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              IgnorePointer(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black54, Colors.transparent, Colors.transparent, Colors.black87])))),
 
-              /// 📌 RIGHT ACTION PILLS
+              // Action Sidebar
               Positioned(
-                right: 12,
-                bottom: 100,
+                right: 15, bottom: 100,
                 child: Column(
                   children: [
-                    _buildAvatarPill(reel.name),
-                    const SizedBox(height: 25),
-                    _actionIcon(Icons.favorite_rounded, "${reel.likes}", Colors.redAccent),
+                    // View Count Display (Eye Icon)
+                    _actionIcon(Icons.remove_red_eye_outlined, "${reel.views}", Colors.white),
                     const SizedBox(height: 20),
-                    _actionIcon(Icons.chat_bubble_rounded, "12", Colors.white),
+
+
+                    // Like Button
+                    GestureDetector(onTap: () => _handleLike(index), child: _actionIcon(reel.isLiked ? Icons.favorite : Icons.favorite_border, "${reel.likesCount}", reel.isLiked ? Colors.red : Colors.white)),
                     const SizedBox(height: 20),
-                    _actionIcon(Icons.ios_share_rounded, "Share", Colors.white),
+
+                    // Comment Button
+                    GestureDetector(onTap: () => _showComments(reel.reelId, index), child: _actionIcon(Icons.comment, "${reel.commentsCount}", Colors.white)),
                     const SizedBox(height: 20),
-                    _actionIcon(Icons.more_horiz_rounded, "", Colors.white),
+
+                    // Share Button
+                    _actionIcon(Icons.share, "Share", Colors.white),
                   ],
                 ),
               ),
 
-              /// 📝 BOTTOM METADATA
+              // Metadata Info
               Positioned(
-                left: 16,
-                bottom: 40,
-                right: 100,
+                left: 16, bottom: 20, right: 100,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          "@${reel.name.toLowerCase().replaceAll(' ', '_')}",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      reel.caption,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Modern "Music/Audio" tag
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
+                    // Name Tap Navigation
+                    GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => OtherPersonProfile(userId: reel.userId))),
                       child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.music_note_rounded, color: Colors.white, size: 14),
-                          SizedBox(width: 5),
-                          Text("Original Audio", style: TextStyle(color: Colors.white, fontSize: 12)),
+                        children: [
+                          GestureDetector(
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => OtherPersonProfile(userId: reel.userId))),
+                              child: _buildAvatarPill(reel.name)
+                          ),
+                          SizedBox(width: 10,),
+                          Text(
+                              "@${reel.name.toLowerCase().replaceAll(' ', '_')}",
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
+                          ),
                         ],
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Text(reel.caption, style: const TextStyle(color: Colors.white, fontSize: 14)),
                   ],
                 ),
               ),
@@ -222,50 +189,68 @@ class _VideoPageState extends State<VideoPage> {
   }
 
   Widget _buildAvatarPill(String name) {
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 1.5),
-      ),
-      child: CircleAvatar(
-        radius: 24,
-        backgroundColor: Colors.white10,
-        child: Text(name[0], style: const TextStyle(color: Colors.white)),
-      ),
-    );
+    return Container(padding: const EdgeInsets.all(2), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.5)), child: CircleAvatar(radius: 15, backgroundColor: Colors.blueAccent, child: Text(name[0], style: const TextStyle(color: Colors.white))));
   }
 
   Widget _actionIcon(IconData icon, String label, Color color) {
-    return Column(
-      children: [
-        // Subtle glow effect for icons
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 10,
-                spreadRadius: 2,
-              )
-            ],
+    return Column(children: [Icon(icon, color: color, size: 30), const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]);
+  }
+}
+
+class _CommentSection extends StatefulWidget {
+  final int reelId;
+  final ApiService apiService;
+  final VoidCallback onCommentAdded;
+  const _CommentSection({required this.reelId, required this.apiService, required this.onCommentAdded});
+
+  @override
+  State<_CommentSection> createState() => _CommentSectionState();
+}
+
+class _CommentSectionState extends State<_CommentSection> {
+  final TextEditingController _ctrl = TextEditingController();
+  List<dynamic> _comments = [];
+  bool _loading = true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  void _load() async {
+    try {
+      final d = await widget.apiService.getReelComments(widget.reelId);
+      if (mounted) setState(() { _comments = d; _loading = false; });
+    } catch (e) { if (mounted) setState(() => _loading = false); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      decoration: const BoxDecoration(color: Color(0xFF1E1E1E), borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      child: Column(
+        children: [
+          const SizedBox(height: 15),
+          const Text("Comments", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          const Divider(color: Colors.white10),
+          Expanded(child: _loading ? const Center(child: CircularProgressIndicator()) : ListView.builder(itemCount: _comments.length, itemBuilder: (c, i) => ListTile(
+              leading: const CircleAvatar(radius: 15, backgroundColor: Colors.white10, child: Icon(Icons.person, size: 18, color: Colors.white70)),
+              title: Text(_comments[i]['name'] ?? "User", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              subtitle: Text(_comments[i]['comment_text'] ?? "", style: const TextStyle(color: Colors.white))
+          ))),
+          Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 10, right: 10, top: 10),
+            child: Row(children: [
+              Expanded(child: TextField(controller: _ctrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(hintText: "Add comment...", hintStyle: const TextStyle(color: Colors.white38), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none)))),
+              IconButton(onPressed: () async {
+                if (_ctrl.text.isEmpty) return;
+                await widget.apiService.addComment(widget.reelId, _ctrl.text);
+                _ctrl.clear(); _load(); widget.onCommentAdded();
+              }, icon: const Icon(Icons.send, color: Colors.blue))
+            ]),
           ),
-          child: Icon(icon, color: color, size: 30),
-        ),
-        if (label.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              shadows: [Shadow(blurRadius: 4, color: Colors.black)],
-            ),
-          ),
-        ]
-      ],
+          const SizedBox(height: 10),
+        ],
+      ),
     );
   }
 }

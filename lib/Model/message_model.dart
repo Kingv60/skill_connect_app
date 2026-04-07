@@ -5,6 +5,7 @@ class MessageModel {
   final String message;
   final String createdDate;
   final String? senderName;
+  final List<ReactionModel> reactions; // New field
 
   MessageModel({
     required this.messageId,
@@ -12,18 +13,44 @@ class MessageModel {
     required this.senderId,
     required this.message,
     required this.createdDate,
-    this.senderName, // Now properly part of the named parameters
+    this.senderName,
+    required this.reactions, // Required in constructor
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
     return MessageModel(
       messageId: json['message_id'] ?? 0,
-      // Fallback to 0 for missing conversation_id to prevent "Null is not a subtype of int"
       conversationId: json['conversation_id'] ?? 0,
       senderId: json['sender_id'] ?? 0,
       message: json['message'] ?? '',
       createdDate: json['created_date'] ?? '',
-      senderName: json['name'], // Maps the "name" field from your JSON
+      senderName: json['name'],
+      // Map the reactions array from JSON
+      reactions: json['reactions'] != null
+          ? (json['reactions'] as List)
+          .map((r) => ReactionModel.fromJson(r))
+          .toList()
+          : [],
+    );
+  }
+}
+
+class ReactionModel {
+  final int userId;
+  final String emoji;
+  final String? username;
+
+  ReactionModel({
+    required this.userId,
+    required this.emoji,
+    this.username,
+  });
+
+  factory ReactionModel.fromJson(Map<String, dynamic> json) {
+    return ReactionModel(
+      userId: json['user_id'] ?? 0,
+      emoji: json['emoji'] ?? '',
+      username: json['username'],
     );
   }
 }

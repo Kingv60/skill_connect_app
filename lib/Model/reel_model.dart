@@ -3,24 +3,24 @@ import 'package:skillconnect/Constants/constants.dart';
 class Reel {
   final int reelId;
   final int userId;
-  final String caption; // Changed to String for easier UI use
+  final String caption;
   final String reelUrl;
-  final String? thumbnailUrl;
-  final int views;
-  final int likes;
-  final DateTime createdAt;
-  final String name; // Added this to match your API response
+  final String name;
+  int likesCount;
+  int commentsCount;
+  int views; // This stores the number displayed next to the eye icon
+  bool isLiked;
 
   Reel({
     required this.reelId,
     required this.userId,
     required this.caption,
     required this.reelUrl,
-    this.thumbnailUrl,
-    required this.views,
-    required this.likes,
-    required this.createdAt,
     required this.name,
+    required this.likesCount,
+    required this.commentsCount,
+    required this.views,
+    required this.isLiked,
   });
 
   factory Reel.fromJson(Map<String, dynamic> json) {
@@ -30,15 +30,16 @@ class Reel {
     return Reel(
       reelId: json['reelid'] ?? 0,
       userId: json['userid'] ?? 0,
-      caption: json['caption'] ?? "", // Default to empty string
+      caption: json['caption'] ?? "",
       reelUrl: fullUrl,
-      thumbnailUrl: json['thumbnailurl'],
-      views: json['views'] ?? 0,
-      likes: json['likes'] ?? 0,
-      name: json['name'] ?? "User", // Mapping the 'name' from JSON
-      createdAt: json['createdat'] != null
-          ? DateTime.parse(json['createdat'])
-          : DateTime.now(),
+      name: json['name'] ?? "User",
+      likesCount: int.tryParse(json['likes_count']?.toString() ?? '0') ?? 0,
+      commentsCount: int.tryParse(json['comments_count']?.toString() ?? '0') ?? 0,
+
+      // UNIVERSAL CHECK: This looks for total_views OR views_count OR views
+      views: int.tryParse((json['total_views'] ?? json['views_count'] ?? json['views'] ?? '0').toString()) ?? 0,
+
+      isLiked: json['is_liked'] ?? false,
     );
   }
 }

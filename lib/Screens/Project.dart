@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../Model/globalFeed_model.dart';
+import '../New/liked+projects.dart';
 import '../Services/api-service.dart';
 import '../New/project-info.dart';
 
@@ -27,12 +28,16 @@ class _ProjectScreenState extends State<ProjectScreen> {
     _fetchFeed();
   }
 
+  bool _isFilterOn = false;
+
   Future<void> _fetchFeed() async {
     setState(() => isLoading = true);
     try {
-      final data = await _apiService.fetchGlobalFeed();
+      // Pass the state to your API service
+      final data = await _apiService.fetchGlobalFeed(filterBySkill: _isFilterOn);
       setState(() {
         projects = data;
+        _currentIndex = 0; // Reset index when filter changes
         isLoading = false;
       });
     } catch (e) {
@@ -40,37 +45,50 @@ class _ProjectScreenState extends State<ProjectScreen> {
     }
   }
 
-  void _handleSwipe(String direction) {
+  void _handleSwipe(String direction) async {
     if (projects.isEmpty) return;
 
+    final currentProject = projects[_currentIndex];
+
     setState(() {
-      if (direction == "right") {
-        _dragX = 600;
-        if (_currentIndex < projects.length - 1) _currentIndex++;
-        else _fetchFeed();
+      if (direction == "up") {
+        _dragY = -800; // Visual swipe up
+        _dragX = 0;
       } else if (direction == "left") {
-        _dragX = -600;
-        if (_currentIndex > 0) _currentIndex--;
-      } else if (direction == "up") {
-        _dragY = -800;
-        Future.delayed(const Duration(milliseconds: 300), () {
-          setState(() {
-            if (projects.isNotEmpty) {
-              projects.removeAt(_currentIndex);
-              if (_currentIndex >= projects.length && _currentIndex > 0) _currentIndex--;
-            }
-          });
-        });
+        _dragX = -800; // Visual swipe left
+        _dragY = 0;
       }
       _rotation = _dragX / 300;
     });
 
+    // --- API Logic ---
+    try {
+      if (direction == "up") {
+        // LIKE API
+        await _apiService.toggleLikeProject(currentProject.projectId);
+      } else if (direction == "left") {
+        // DISCARD API (Now calling the service)
+        await _apiService.discardProject(currentProject.projectId);
+      }
+    } catch (e) {
+      debugPrint("API Error during swipe: $e");
+    }
+
+    // Animation Delay & Card Removal
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
         setState(() {
+          projects.removeAt(_currentIndex);
           _dragX = 0;
           _dragY = 0;
           _rotation = 0;
+
+          // Auto-refill if list is empty
+          if (projects.isEmpty) {
+            _fetchFeed();
+          } else if (_currentIndex >= projects.length) {
+            _currentIndex = projects.length - 1;
+          }
         });
       }
     });
@@ -115,32 +133,100 @@ class _ProjectScreenState extends State<ProjectScreen> {
   }
 
   Widget _buildHeader() {
-    return Column(
-      children: [
-        Text(
-          "DISCOVER PROJECTS",
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.9),
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
-            letterSpacing: 6,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Title Section
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "DISCOVER",
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  letterSpacing: 4,
+                ),
+              )
+            ],
           ),
-        ),
-        const SizedBox(height: 5),
-        Container(
-          height: 2,
-          width: 30,
-          decoration: BoxDecoration(
-            color: Colors.indigoAccent,
-            borderRadius: BorderRadius.circular(10),
+
+          // Modern 3-Dot Menu
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded, color: Colors.white70),
+            color: const Color(0xFF1A1A1A), // Dark background for the menu
+            offset: const Offset(0, 50),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            onSelected: (value) {
+              if (value == 'filter') {
+                setState(() => _isFilterOn = !_isFilterOn);
+                _fetchFeed();
+              } else if (value == 'liked') {
+                // NAVIGATE TO LIKED PROJECTS PAGE
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LikedProjectsPage()),
+                );
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              PopupMenuItem(
+                value: 'filter',
+                child: Row(
+                  children: [
+                    Icon(
+                      _isFilterOn ? Icons.filter_alt : Icons.filter_alt_off,
+                      color: _isFilterOn ? Colors.indigoAccent : Colors.white60,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _isFilterOn ? "Skill Filter: ON" : "Skill Filter: OFF",
+                      style: TextStyle(
+                        color: _isFilterOn ? Colors.indigoAccent : Colors.white,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(height: 1),
+              PopupMenuItem(
+                value: 'liked',
+                child: Row(
+                  children: const [
+                    Icon(Icons.favorite_rounded, color: Colors.redAccent, size: 20),
+                    SizedBox(width: 12),
+                    Text(
+                      "Liked Projects",
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        )
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildSwipeableCard() {
+    final project = projects[_currentIndex]; // Current project data
+
     return GestureDetector(
+      // CARD PAR TAP KARNE PAR INFO PAGE KHULEGA
+      onDoubleTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProjectInfoPage(projectId: project.projectId,),
+          ),
+        );
+      },
       onPanUpdate: (details) {
         setState(() {
           _dragX += details.delta.dx;
@@ -173,6 +259,57 @@ class _ProjectScreenState extends State<ProjectScreen> {
     );
   }
 
+
+  Widget _buildFilterToggle() {
+    return GestureDetector(
+      onTap: () {
+        setState(() => _isFilterOn = !_isFilterOn);
+        _fetchFeed(); // Refresh feed immediately on toggle
+      },
+      child: Column(
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 50,
+            height: 20,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              color: _isFilterOn ? Colors.indigoAccent : Colors.white.withOpacity(0.1),
+              border: Border.all(
+                color: _isFilterOn ? Colors.indigoAccent : Colors.white24,
+              ),
+            ),
+            child: AnimatedAlign(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              alignment: _isFilterOn ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: 18,
+                height: 18,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            "SKILL FILTER",
+            style: TextStyle(
+              color: _isFilterOn ? Colors.indigoAccent : Colors.white38,
+              fontSize: 8,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1,
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
   Widget _buildCardContent() {
     final project = projects[_currentIndex];
     String imageUrl = "https://picsum.photos/seed/${project.projectId}/600/800";
@@ -184,11 +321,14 @@ class _ProjectScreenState extends State<ProjectScreen> {
           borderRadius: BorderRadius.circular(35),
           boxShadow: [
             BoxShadow(
-              color: _dragX > 0
-                  ? Colors.greenAccent.withOpacity(0.1)
-                  : _dragX < 0 ? Colors.redAccent.withOpacity(0.1) : Colors.black,
+              // Change shadow based on direction: Up = Green (Like), Left = Red (Pass)
+              color: _dragY < -50
+                  ? Colors.greenAccent.withOpacity(0.2)
+                  : _dragX < -50
+                  ? Colors.redAccent.withOpacity(0.2)
+                  : Colors.black54,
               blurRadius: 30,
-              spreadRadius: -10,
+              spreadRadius: -5,
             )
           ],
         ),
@@ -196,16 +336,17 @@ class _ProjectScreenState extends State<ProjectScreen> {
           borderRadius: BorderRadius.circular(35),
           child: Stack(
             children: [
-              // Background Image
+              // 1. Background Image
               Positioned.fill(
                 child: Image.network(
                   imageUrl,
                   fit: BoxFit.cover,
                   loadingBuilder: (context, child, progress) =>
-                  progress == null ? child : Container(color: Colors.white.withOpacity(0.05)),
+                  progress == null ? child : Container(color: Colors.white10),
                 ),
               ),
-              // Content Overlay
+
+              // 2. Content Overlay Gradient
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -218,7 +359,53 @@ class _ProjectScreenState extends State<ProjectScreen> {
                   ),
                 ),
               ),
-              // Details
+
+              // 3. Swipe Up "LIKE" Indicator (Visible during drag)
+              if (_dragY < -100)
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    opacity: (_dragY.abs() / 400).clamp(0, 0.8),
+                    duration: Duration.zero,
+                    child: Container(
+                      color: Colors.greenAccent.withOpacity(0.4),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.favorite, color: Colors.white, size: 80),
+                            const SizedBox(height: 10),
+                            Text(
+                              "LIKE",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // 4. Swipe Left "PASS" Indicator
+              if (_dragX < -100)
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    opacity: (_dragX.abs() / 400).clamp(0, 0.8),
+                    duration: Duration.zero,
+                    child: Container(
+                      color: Colors.redAccent.withOpacity(0.4),
+                      child: Center(
+                        child: Icon(Icons.close_rounded, color: Colors.white, size: 80),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // 5. Project Details (Glass Footer)
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -285,29 +472,42 @@ class _ProjectScreenState extends State<ProjectScreen> {
 
   Widget _buildFooterActions() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
+          // 1. DISCARD BUTTON (Left) - Permanent Pass
           _ModernActionButton(
             icon: Icons.close_rounded,
             color: Colors.white.withOpacity(0.05),
             iconColor: Colors.white54,
             onTap: () => _handleSwipe("left"),
           ),
+
+          // 2. LIKE BUTTON (Center) - Swipe Up Animation
           _ModernActionButton(
-            icon: Icons.rocket_launch_rounded,
+            icon: Icons.favorite,
             color: Colors.redAccent.withOpacity(0.2),
             iconColor: Colors.redAccent,
-            size: 75,
+            size: 80,
             glow: true,
             onTap: () => _handleSwipe("up"),
           ),
+
+          // 3. NEXT BUTTON (Right) - Simply Move to Next Card
           _ModernActionButton(
-            icon: Icons.favorite_rounded,
-            color: Colors.indigoAccent.withOpacity(0.2),
+            icon: Icons.arrow_forward_ios_rounded, // Modern arrow icon
+            color: Colors.indigoAccent.withOpacity(0.1),
             iconColor: Colors.indigoAccent,
-            onTap: () => _handleSwipe("right"),
+            onTap: () {
+              setState(() {
+                if (_currentIndex < projects.length - 1) {
+                  _currentIndex++; // Move to next
+                } else {
+                  _fetchFeed(); // Refresh if at the end
+                }
+              });
+            },
           ),
         ],
       ),

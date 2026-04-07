@@ -70,41 +70,43 @@ class _ProjectCreatePageState extends State<ProjectCreatePage> {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1),
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 10),
-                  _sectionHeader("Project Title"),
-                  _customTextField(
-                    controller: titleController,
-                    hint: "What are you building?",
-                  ),
-                  const SizedBox(height: 25),
-                  _sectionHeader("Description"),
-                  _customTextField(
-                    controller: aboutController,
-                    hint: "Describe the vision, goals, and stack...",
-                    maxLines: 5,
-                  ),
-                  const SizedBox(height: 25),
-                  _sectionHeader("Tech Stack & Requirements"),
-                  _buildSkillInput(),
-                  const SizedBox(height: 25),
-                  _sectionHeader("Team Size"),
-                  _buildMemberDropdown(),
-                  const SizedBox(height: 40),
-                ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 10),
+                    _sectionHeader("Project Title"),
+                    _customTextField(
+                      controller: titleController,
+                      hint: "What are you building?",
+                    ),
+                    const SizedBox(height: 25),
+                    _sectionHeader("Description"),
+                    _customTextField(
+                      controller: aboutController,
+                      hint: "Describe the vision, goals, and stack...",
+                      maxLines: 5,
+                    ),
+                    const SizedBox(height: 25),
+                    _sectionHeader("Tech Stack & Requirements"),
+                    _buildSkillInput(),
+                    const SizedBox(height: 25),
+                    _sectionHeader("Team Size"),
+                    _buildMemberDropdown(),
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
             ),
-          ),
-          _buildBottomAction(),
-        ],
+            _buildBottomAction(),
+          ],
+        ),
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'package:skillconnect/Constants/constants.dart';
 
 import '../Model/single_project_model.dart';
 import '../Services/api-service.dart';
+import '../message.dart';
 
 class ProjectInfoPage extends StatefulWidget {
   final int projectId;
@@ -109,7 +110,7 @@ class _ProjectInfoPageState extends State<ProjectInfoPage> {
                         height: 40,
                         child: project.avatarUrl.toLowerCase().endsWith('.svg')
                             ? SvgPicture.network(
-                                baseUrl+project.avatarUrl,
+                                baseUrlImage+project.avatarUrl,
                                 fit: BoxFit.cover,
                                 placeholderBuilder: (BuildContext context) =>
                                     Container(
@@ -120,7 +121,7 @@ class _ProjectInfoPageState extends State<ProjectInfoPage> {
                                     ),
                               )
                             : Image.network(
-                                project.avatarUrl,
+                                baseUrlImage+project.avatarUrl,
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stackTrace) =>
                                     const Icon(
@@ -317,16 +318,16 @@ class _ProjectInfoPageState extends State<ProjectInfoPage> {
               height: 35,
               child: OutlinedButton(
                 onPressed: () {
-                  // Navigator.push(
-                  //   context,
-                  //   MaterialPageRoute(
-                  //     builder: (context) => ChatPage(
-                  //       name: project.username, // Dynamic from API
-                  //       image: project.avatarUrl, // Dynamic from API
-                  //       conversationId: project.ownerId, // Using owner_id from API
-                  //     ),
-                  //   ),
-                  // );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ChatPage(
+                        name: project.username, // Dynamic from API
+                        image: project.avatarUrl, // Dynamic from API
+                        conversationId: project.ownerId, receiverId: project.ownerId, // Using owner_id from API
+                      ),
+                    ),
+                  );
                 },
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Colors.white24),

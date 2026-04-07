@@ -1,12 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:skillconnect/New/All_video_of_course.dart';
 import 'package:skillconnect/New/video_upload_page.dart';
 
 // Assuming these are defined in your project
 import 'Constants/constants.dart';
+import 'Model/media_post_model.dart';
+import 'New/My_Post_Media.dart';
 import 'New/VideoPlayfor_course.dart';
 import 'New/edit_page.dart';
 import 'Provider/profile_provider.dart';
@@ -25,21 +28,43 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
   Color backgroundColor = AppColors.scaffoldBg;
   Color textColor = AppColors.textPrimary;
   late TabController _tabController;
+  int? userId;
+
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     loadColors();
   }
 
   Future<void> loadColors() async {
     final prefs = await SharedPreferences.getInstance();
+
+    userId = prefs.getInt('user_id');
+
     int? bg = prefs.getInt('bgColor');
     int? text = prefs.getInt('textColor');
-    if (bg != null) backgroundColor = Color(bg);
-    if (text != null) textColor = Color(text);
+
+    backgroundColor = bg != null ? Color(bg) : const Color(0xFF000000);
+    textColor = text != null ? Color(text) : const Color(0xFFFFFFFF);
+
     if (mounted) setState(() {});
+  }
+  void _resetTheme() async {
+    const defaultBg = Color(0xFF000000);
+    const defaultText = Color(0xFFFFFFFF);
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('bgColor', defaultBg.value);
+    await prefs.setInt('textColor', defaultText.value);
+
+    setState(() {
+      backgroundColor = defaultBg;
+      textColor = defaultText;
+    });
+
+    Navigator.pop(context);
   }
 
   void _showThemeDialog() {
@@ -66,6 +91,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.white54))),
+            TextButton(
+              onPressed: _resetTheme,
+              child: const Text(
+                "Reset",
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               onPressed: () => _applyTheme(bgController.text, textController.text),
@@ -178,22 +210,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 10),
+
                     // Bio/Role Badge
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface.withOpacity(0.5),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white10),
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 2,vertical: 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.work_outline, color: AppColors.primary, size: 16),
+                             Text("Bio",style: TextStyle(color: Colors.white),),
                               const SizedBox(width: 8),
                               Text(profile.role, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
                             ],
@@ -203,7 +230,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
                         ],
                       ),
                     ),
-                    const SizedBox(height: 10),
+
                     const Text("Expertise", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 10),
                     Wrap(
@@ -243,7 +270,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
                   indicatorSize: TabBarIndicatorSize.label,
                   labelColor: Colors.white,
                   unselectedLabelColor: AppColors.textSecondary,
-                  tabs: const [Tab(text: "My Videos"), Tab(text: "Courses")],
+                  tabs: const [Tab(text: "Posts"),Tab(text: "My Videos"), Tab(text: "Courses")],
                 ),
                 backgroundColor,
               ),
@@ -253,6 +280,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
               child: TabBarView(
                 controller: _tabController,
                 children: [
+                  _buildPostsTab(),
                   _buildRecentVideosTab(),
                   _buildPlaylistCoursesTab(profile),
                 ],
@@ -262,6 +290,150 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
         ),
       ),
     );
+  }
+
+  Widget _buildPostsTab() {
+    return FutureBuilder<List<dynamic>>(
+      // Aapka naya ApiService function jo userId leta hai
+      future: ApiService().getPostsByUserId(userId!),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: Colors.blueAccent));
+        }
+
+        if (snapshot.hasError) {
+          return const Center(child: Text("Error loading posts", style: TextStyle(color: Colors.white24)));
+        }
+
+        final List<dynamic> postsData = snapshot.data ?? [];
+
+        if (postsData.isEmpty) {
+          return const Center(child: Text("No posts yet", style: TextStyle(color: Colors.white24)));
+        }
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(2),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 2,
+            mainAxisSpacing: 2,
+          ),
+          itemCount: postsData.length,
+          itemBuilder: (context, index) {
+            final postJson = postsData[index];
+
+            // 1. Map data ko MyPost model mein convert karna
+            DateTime parsedDate;
+            try {
+              parsedDate = postJson['createddate'] != null
+                  ? DateTime.parse(postJson['createddate'].toString())
+                  : DateTime.now();
+            } catch (e) {
+              parsedDate = DateTime.now(); // Agar parse fail ho jaye toh current date
+            }
+            // Taki hum MyPostDetailPage use kar sakein
+            final MyPost postModel = MyPost(
+              postId: postJson['post_id'] ?? 0,
+              caption: postJson['caption'] ?? "",
+              file: postJson['file'] ?? "",
+              userId: postJson['user_id'] ?? 0,
+              username: postJson['username'] ?? "User",
+              avatarUrl: postJson['avatar_url'] ?? "",
+              likes: postJson['likes']?.toString() ?? "0",
+              comment: postJson['comments']?.toString() ?? "0", // Backend key check karein 'comments' vs 'comment'
+              createdDate: parsedDate, createdBy: 0,
+            );
+
+            return GestureDetector(
+              onTap: () {
+                // 2. Aapka banaya hua Detail Page yahan call hoga
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MyPostDetailPage(post: postModel),
+                  ),
+                );
+              },
+              child: Container(
+                color: Colors.grey[900],
+                child: Image.network(
+                  "$baseUrlImage${postModel.file}",
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Center(
+                    child: Icon(Icons.play_circle_fill, color: Colors.white24, size: 30),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+// Simple Post Item UI
+  Widget _buildPostItem(dynamic post) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (post['image_url'] != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                "$baseUrlImage${post['image_url']}",
+                width: double.infinity,
+                height: 200,
+                fit: BoxFit.cover,
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            post['content'] ?? "",
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _formatTime(post['created_at']),
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+  String _formatTime(String? timeStr) {
+    if (timeStr == null || timeStr.isEmpty) return "";
+    try {
+      final DateTime serverDate = DateTime.parse(timeStr).toLocal();
+      final DateTime now = DateTime.now();
+
+      // If it's today, show the time (e.g., 10:30 AM)
+      if (serverDate.year == now.year &&
+          serverDate.month == now.month &&
+          serverDate.day == now.day) {
+        return DateFormat.jm().format(serverDate);
+      }
+
+      // If it's yesterday, show "Yesterday"
+      final yesterday = now.subtract(const Duration(days: 1));
+      if (serverDate.year == yesterday.year &&
+          serverDate.month == yesterday.month &&
+          serverDate.day == yesterday.day) {
+        return "Yesterday";
+      }
+
+      // Otherwise, show the date (e.g., Apr 1)
+      return DateFormat.MMMd().format(serverDate);
+    } catch (e) {
+      return "";
+    }
   }
 
   Widget _buildRecentVideosTab() {
@@ -366,9 +538,12 @@ class VideoListItem extends StatelessWidget {
     final String thumbUrl = "$baseUrlImage${video['thumbnail_url'] ?? ""}";
     final String videoUrl = "$baseUrlImage${video['video_url'] ?? ""}";
     final String videoTitle = video['name'] ?? "Untitled";
+    final int video_id = video['video_id'];
+    final String createdAT =video['created_at'];
+
 
     return InkWell(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => YouTubePlayerPage(videoUrl: videoUrl, title: videoTitle))),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => YouTubePlayerPage(videoUrl: videoUrl, title: videoTitle, videoId: video_id, createAT: createdAT,))),
       child: Container(
         margin: const EdgeInsets.only(bottom: 20),
         child: Row(

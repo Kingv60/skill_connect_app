@@ -1,13 +1,27 @@
 import 'dart:ui';
+import 'dart:convert'; // jsonEncode ke liye
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:http/http.dart' as http;
+
+import '../Services/api-service.dart'; // http package
 
 class YouTubePlayerPage extends StatefulWidget {
   final String videoUrl;
   final String title;
+  final int videoId;
+  final String createAT;// Make sure to pass these from previous screen
 
-  const YouTubePlayerPage({super.key, required this.videoUrl, required this.title});
+
+  const YouTubePlayerPage({
+    super.key,
+    required this.videoUrl,
+    required this.title,
+    required this.videoId,
+    required this.createAT,
+  });
 
   @override
   State<YouTubePlayerPage> createState() => _YouTubePlayerPageState();
@@ -17,19 +31,80 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
   late VideoPlayerController _videoController;
   ChewieController? _chewieController;
   late String _currentUrl;
+  int _totalViews = 0;
+
+
+  void _fetchViewData() async {
+    final apiService = ApiService();
+    final data = await apiService.getVideoViews(widget.videoId);
+
+    if (data != null && data['success'] == true) {
+      setState(() {
+        _totalViews = data['total_views'];
+      });
+      print("✅ Total Views Updated: $_totalViews");
+    }
+  }
+
+  // --- View Tracking Variables ---
+  bool _isViewCounted = false;
+
+  int? _userId;// Default text
 
   @override
   void initState() {
     super.initState();
     _currentUrl = widget.videoUrl;
-    _initializePlayer(_currentUrl);
+    _loadUserIdAndInitialize();
+    _fetchViewData();
   }
 
+  Future<void> _loadUserIdAndInitialize() async {
+    final prefs = await SharedPreferences.getInstance();
+    _userId = prefs.getInt("user_id");
+
+    // Player initialize karein
+    _initializePlayer(_currentUrl);
+  }
+  String _formatDate(String dateStr) {
+    try {
+      DateTime dateTime = DateTime.parse(dateStr);
+      // Mahino ke naam ke liye list
+      List<String> months = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+      ];
+      return "${months[dateTime.month - 1]} ${dateTime.day}, ${dateTime.year}";
+    } catch (e) {
+      return "Unknown Date"; // Agar parse na ho paye
+    }
+  }
   void _initializePlayer(String url) async {
-    setState(() => _chewieController = null);
+    setState(() {
+      _chewieController = null;
+      _isViewCounted = false; // Reset flag for new video
+    });
 
     _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
     await _videoController.initialize();
+
+    // --- 15% PROGRESS LISTENER LOGIC ---
+    _videoController.addListener(() {
+      if (_videoController.value.isInitialized && !_isViewCounted) {
+        final duration = _videoController.value.duration;
+        final position = _videoController.value.position;
+
+        if (duration.inSeconds > 0) {
+          // Progress calculate: (current position / total duration)
+          double progress = position.inMilliseconds / duration.inMilliseconds;
+
+          if (progress >= 0.15) { // 15% threshold
+            _isViewCounted = true; // Stop multiple calls
+            _sendViewUpdate(position.inSeconds);
+          }
+        }
+      }
+    });
 
     _chewieController = ChewieController(
       videoPlayerController: _videoController,
@@ -47,6 +122,35 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
     setState(() {});
   }
 
+  // --- API CALL FUNCTION ---
+  // YouTubePlayerPage.dart ke andar function ko aise badlein:
+  void _sendViewUpdate(int watchedSeconds) async {
+    // 1. ApiService ka instance banayein
+    final ApiService apiService = ApiService();
+
+    print("🚀 Triggering ApiService for Video ID: ${widget.videoId}");
+
+    try {
+      // 2. ApiService ka function call karein (Ye automatically 10.57.75.55 use karega)
+      final result = await apiService.updateVideoView(
+        videoId: widget.videoId,
+        userId: _userId ?? 0,
+        watchedSeconds: watchedSeconds,
+      );
+
+      if (result != null && result['success'] == true) {
+        setState(() {
+          _totalViews = result['total_views'];
+        });
+        print("✅ View Counted Successfully!");
+      } else {
+        print("⚠️ View update failed or returned null");
+      }
+    } catch (e) {
+      print("🚨 UI Error: $e");
+    }
+  }
+
   void _onVideoSelected(String newUrl) {
     _videoController.dispose();
     _chewieController?.dispose();
@@ -55,6 +159,7 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
 
   @override
   void dispose() {
+    _videoController.removeListener(() {}); // Remove listener
     _videoController.dispose();
     _chewieController?.dispose();
     super.dispose();
@@ -66,10 +171,7 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
       backgroundColor: const Color(0xff0f0f0f),
       body: Column(
         children: [
-          /// 1. VIDEO PLAYER AREA
           _buildVideoHeader(),
-
-          /// 2. CONTENT AREA
           Expanded(
             child: ListView(
               physics: const BouncingScrollPhysics(),
@@ -95,7 +197,6 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
   Widget _buildVideoHeader() {
     return Stack(
       children: [
-        // 1. THE PLAYER
         Container(
           width: double.infinity,
           color: Colors.black,
@@ -109,10 +210,8 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
             ),
           ),
         ),
-
-        // 2. THE COMPACT BACK BUTTON
         Positioned(
-          top: MediaQuery.of(context).padding.top + 8, // Adjusts for status bar
+          top: MediaQuery.of(context).padding.top + 8,
           left: 12,
           child: InkWell(
             onTap: () => Navigator.pop(context),
@@ -120,17 +219,17 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(50),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10), // Glass effect
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
-                  height: 36, // Fixed small size
-                  width: 36,  // Fixed small size
+                  height: 36,
+                  width: 36,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05), // Semi-transparent
+                    color: Colors.white.withOpacity(0.05),
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white.withOpacity(0.1), width: 0.5),
                   ),
                   child: const Icon(
-                    Icons.keyboard_arrow_down_rounded, // Better "Minimize/Back" feel
+                    Icons.keyboard_arrow_down_rounded,
                     color: Colors.white,
                     size: 15,
                   ),
@@ -163,11 +262,11 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Text("1.2M views", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+              Text("$_totalViews Views", style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
               const SizedBox(width: 8),
               Container(width: 3, height: 3, decoration: const BoxDecoration(color: Colors.white38, shape: BoxShape.circle)),
               const SizedBox(width: 8),
-              const Text("Oct 2024", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+               Text(_formatDate(widget.createAT), style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
             ],
           ),
         ],
@@ -204,7 +303,6 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Thumbnail
                 Stack(
                   children: [
                     Container(
@@ -228,7 +326,6 @@ class _YouTubePlayerPageState extends State<YouTubePlayerPage> {
                   ],
                 ),
                 const SizedBox(width: 12),
-                // Text Details
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
