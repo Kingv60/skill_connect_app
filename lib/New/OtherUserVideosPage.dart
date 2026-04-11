@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:skillconnect/Constants/constants.dart';
 import 'package:skillconnect/Services/api-service.dart';
 import 'VideoPlayfor_course.dart';
@@ -8,11 +9,12 @@ import 'VideoPlayfor_course.dart';
 class OtherUserVideosPage extends StatefulWidget {
   final dynamic otherUserProfile;
   final int userId;
+  final dynamic price;
 
   const OtherUserVideosPage({
     super.key,
     required this.otherUserProfile,
-    required this.userId,
+    required this.userId, required this.price,
   });
 
   @override
@@ -21,52 +23,137 @@ class OtherUserVideosPage extends StatefulWidget {
 
 class _OtherUserVideosPageState extends State<OtherUserVideosPage> {
   late Future<List<dynamic>> _videosFuture;
+  late Razorpay _razorpay;
+  bool _isEnrolled = false;
+  bool _isCheckingEnrollment = true;
+
+
+  Future<void> _checkEnrollment() async {
+    try {
+      final result = await ApiService().checkEnrollment(widget.userId);
+
+      setState(() {
+        _isEnrolled = result;
+        _isCheckingEnrollment = false;
+      });
+    } catch (e) {
+      print("Enrollment check error: $e");
+      setState(() {
+        _isCheckingEnrollment = false;
+      });
+    }
+  }
+
+  void openCheckout(double price) {
+    var options = {
+      'key': 'rzp_test_Sb0blC2bJR4hdQ', // Razorpay Test Key
+      'amount': (price * 100).toInt(),
+      'name': 'SkillConnect',
+      'description': 'Course Enrollment',
+      'prefill': {
+        'contact': '9874563211  ',
+        'email': 'vishalCaffe@gmail.com'
+      }
+    };
+
+    try {
+      _razorpay.open(options);
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  Future<void> _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    print("Payment Success: ${response.paymentId}");
+
+    // payment success ke baad enroll
+    await _handleEnroll(context);
+
+    setState(() {
+      _isEnrolled = true;
+    });
+  }
+
+  void _handlePaymentError(PaymentFailureResponse response) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Payment Failed")),
+    );
+  }
+
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    print("Wallet: ${response.walletName}");
+  }
   @override
   void initState() {
     super.initState();
+    _razorpay = Razorpay();
+
+    _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
+    _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
+    _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
     // We call the API here once, and store the result in our variable
     _videosFuture = ApiService().getVideosByUserId(widget.userId);
+    _checkEnrollment();
   }
   bool _isEnrolling = false; // To show loading on button
   Future<void> _handleEnroll(BuildContext context) async {
     setState(() => _isEnrolling = true);
 
     try {
-      // Assuming courseId is the same as widget.userId or
-      // passed within widget.otherUserProfile['course_id']
-      final int courseId = widget.userId;
+      int? courseId;
 
+      // 1. Try to get course_id from profile
+      if (widget.otherUserProfile != null && widget.otherUserProfile['course_id'] != null) {
+        courseId = int.tryParse(widget.otherUserProfile['course_id'].toString());
+      }
+
+      // 2. If still null, try to get it from the videos list we fetched
+      if (courseId == null) {
+        final List<dynamic> currentVideos = await _videosFuture;
+        if (currentVideos.isNotEmpty) {
+          // Your backend SQL for lessons usually includes course_id
+          courseId = int.tryParse(currentVideos[0]['course_id'].toString());
+        }
+      }
+
+      // 3. Final check before calling API
+      if (courseId == null) {
+        throw Exception("Could not find a valid Course ID to enroll in.");
+      }
+
+      print("--- Calling Enroll API for Course: $courseId ---");
       final result = await ApiService().enrollInCourse(courseId);
 
       if (!mounted) return;
 
-      if (result['success']) {
+      if (result['success'] == true || result['message'] == "Enrolled successfully") {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
+          SnackBar(content: Text(result['message'] ?? "Enrolled!"), backgroundColor: Colors.green),
         );
+        setState(() => _isEnrolled = true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']),
-            backgroundColor: Colors.redAccent,
-            behavior: SnackBarBehavior.floating,
-          ),
+          SnackBar(content: Text(result['message'] ?? "Enrollment failed"), backgroundColor: Colors.orange),
         );
       }
     } catch (e) {
+      print("ENROLL ERROR LOG: $e"); // Check this in your VS Code/Android Studio console!
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("An unexpected error occurred.")),
+        SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.redAccent),
       );
     } finally {
       if (mounted) setState(() => _isEnrolling = false);
     }
   }
+
+  @override
+  void dispose() {
+    _razorpay.clear();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) {
+    final double price = double.tryParse(widget.price.toString()) ?? 0;
     final String name = widget.otherUserProfile['name'] ?? "User";
     final String username = widget.otherUserProfile['username'] ?? "creator";
     final String avatar = widget.otherUserProfile['avatar'] ?? "";
@@ -137,15 +224,51 @@ class _OtherUserVideosPageState extends State<OtherUserVideosPage> {
                         width: 200,
                         height: 45,
                         child: ElevatedButton(
-                          onPressed: () => _handleEnroll(context),
+                          onPressed: (_isCheckingEnrollment || _isEnrolled)
+                              ? null
+                              : () {
+                            if (price == 0) {
+                              _handleEnroll(context);
+                            } else {
+                              openCheckout(price);
+                            }
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blueAccent,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             elevation: 0,
                           ),
-                          child: const Text("Enroll in Course",
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          child: _isCheckingEnrollment
+                              ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                              : _isEnrolled
+                              ? const Text(
+                            "Already Enrolled",
+                            style: TextStyle(fontWeight: FontWeight.bold,color: Colors.white),
+                          )
+                              : _isEnrolling
+                              ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                              : Text(
+                            price == 0 ? "Enroll • Free" : "Enroll • ₹$price",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
                         ),
                       ),
                     ],

@@ -5,8 +5,9 @@ class Post {
   final String username;
   final String avatarUrl;
   final int user_id;
-   String likes;
-   String comments;
+  String likes;
+  String comments;
+  bool isViewed;
 
   Post({
     required this.postId,
@@ -17,6 +18,7 @@ class Post {
     required this.avatarUrl,
     required this.likes,
     required this.comments,
+    required this.isViewed,
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class Post {
       avatarUrl: json['avatar_url'] ?? "",
       likes: json['likes'].toString(),
       comments: json['comments'].toString(),
+      isViewed: json['is_viewed'] ?? false,
     );
   }
 }

@@ -23,7 +23,7 @@ class MessageNotifier extends StateNotifier<AsyncValue<List<MessageModel>>> {
     _pollingTimer?.cancel();
 
     // Create a timer that runs every 2 seconds
-    _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _pollMessages();
     });
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import 'package:skillconnect/Screens/project-create.dart';
 import 'package:skillconnect/Screens/user_search.dart';
 import 'package:skillconnect/profile.dart';
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 
 import '../Model/Post_model.dart';
 import '../Provider/profile_provider.dart';
@@ -35,6 +37,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String bio = "";
   String avatarUrl = "";
   List<String> skills = [];
+  final Map<int, Timer> _viewTimers = {}; // Tracks active timers for each post
+  final Set<int> _seenPostIds = {};
+
+
+  Future<void> _markAsRead(int postId) async {
+    if (_seenPostIds.contains(postId)) return;
+
+    try {
+      final success = await ApiService().markPostAsRead(postId);
+
+      if (success) {
+        _seenPostIds.add(postId);
+        
+
+        debugPrint("✅ Post $postId marked as seen");
+      }
+    } catch (e) {
+      debugPrint("❌ Error marking read: $e");
+    }
+  }
 
   // 1. ADD LOCAL STATE FOR POSTS
   List<Post> _posts = [];
@@ -47,6 +69,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _loadInitialData();
   }
 
+
+  @override
+  void dispose() {
+    // Cancel all running timers
+    _viewTimers.forEach((key, timer) => timer.cancel());
+    _viewTimers.clear();
+    super.dispose();
+  }
   // Initial Load Logic
   Future<void> _loadInitialData() async {
     ref.read(profileProvider.notifier).loadProfile();
@@ -57,12 +87,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _fetchFeed() async {
     try {
       final data = await ApiService().fetchFeed();
+
+      // unseen posts top par
+      data.sort((a, b) {
+        if (a.isViewed == b.isViewed) return 0;
+        return a.isViewed ? 1 : -1;
+      });
+
       if (mounted) {
         setState(() {
           _posts = data;
           _isLoading = false;
-          // Note: Yahan hum _likedPostIds ko clear nahi kar rahe taaki
-          // session ke dauran liked posts red hi rahein.
         });
       }
     } catch (e) {
@@ -309,55 +344,121 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // 5. SIMPLIFIED FEED (No FutureBuilder flicker)
   Widget _buildModernFeed() {
+    bool allSeen = _posts.isNotEmpty && _posts.every((post) => post.isViewed);
+
     if (_isLoading) {
-      return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: Colors.blueAccent))));
+      return const SliverToBoxAdapter(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(40),
+            child: CircularProgressIndicator(color: Colors.blueAccent),
+          ),
+        ),
+      );
     }
 
     if (_posts.isEmpty) {
-      return const SliverToBoxAdapter(child: Center(child: Text("No posts found", style: TextStyle(color: Colors.white54))));
+      return const SliverToBoxAdapter(
+        child: Center(
+          child: Column(
+            children: [
+              SizedBox(height: 50),
+              Icon(Icons.done_all, color: Colors.blueAccent, size: 50),
+              SizedBox(height: 10),
+              Text("You're all caught up!",
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              Text("Check back later for new posts",
+                  style: TextStyle(color: Colors.white38)),
+            ],
+          ),
+        ),
+      );
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 0),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-              (context, index) {
-            final post = _posts[index];
-            final imageUrl = "$baseUrlImage${post.file}";
-            final isLiked = _likedPostIds.contains(post.postId);
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        /// 🔥 ALL CAUGHT UP BANNER
+        if (allSeen)
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 25),
+            child: const Column(
+              children: [
+                Icon(Icons.done_all, color: Colors.blueAccent, size: 45),
+                SizedBox(height: 10),
+                Text(
+                  "You're all caught up!",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "Check back later for new posts",
+                  style: TextStyle(color: Colors.white38),
+                ),
+              ],
+            ),
+          ),
 
-            return Padding(
+        /// 🔥 POSTS
+        ..._posts.asMap().entries.map((entry) {
+          final index = entry.key;
+          final post = entry.value;
+          final postId = post.postId;
+          final imageUrl = "$baseUrlImage${post.file}";
+          final isLiked = _likedPostIds.contains(postId);
+
+          return VisibilityDetector(
+            key: Key('post-$postId'),
+            onVisibilityChanged: (visibilityInfo) {
+              double visiblePercentage = visibilityInfo.visibleFraction * 100;
+
+              if (visiblePercentage > 70) {
+                if (!_seenPostIds.contains(postId) &&
+                    !_viewTimers.containsKey(postId)) {
+                  _viewTimers[postId] = Timer(const Duration(seconds: 2), () {
+                    _markAsRead(postId);
+                    _viewTimers.remove(postId);
+                  });
+                }
+              } else {
+                _viewTimers[postId]?.cancel();
+                _viewTimers.remove(postId);
+              }
+            },
+            child: Padding(
               padding: const EdgeInsets.only(bottom: 20),
               child: post.file.endsWith(".mp4")
                   ? _buildVideoClip(
                 index,
-                post.postId,
+                postId,
                 imageUrl,
                 post.caption,
                 post.likes,
                 post.comments,
                 isLiked,
                 post.username,
-                baseUrlImage+post.avatarUrl,
+                baseUrlImage + post.avatarUrl,
               )
                   : _buildPostCard(
                 index,
-                post.postId,
+                postId,
                 imageUrl,
                 post.caption,
                 post.likes,
                 post.comments,
                 isLiked,
                 post.username,
-                baseUrlImage+post.avatarUrl,
+                baseUrlImage + post.avatarUrl,
               ),
-            );
-          },
-          childCount: _posts.length,
-        ),
-      ),
+            ),
+          );
+        }).toList(),
+      ]),
     );
   }
+
   Widget _buildAvatar(String? avatarUrl) {
     // 1. Handle Null or Empty Case
     if (avatarUrl == null || avatarUrl.isEmpty) {

@@ -339,18 +339,39 @@ class ApiService {
   /// 6.. Get Messages of Specific Person
   /// ===========================
 
+  /// ===========================
+  /// 6.. Get Messages of Specific Person (Updated)
+  /// ===========================
   Future<List<MessageModel>> getMessages(int conversationId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/messages/messages/$conversationId'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final url = Uri.parse('$baseUrl/messages/messages/$conversationId');
 
+    print("🚀 GET MESSAGES REQUEST: $url");
 
-    if (response.statusCode == 200) {
-      List data = jsonDecode(response.body);
-      return data.map((m) => MessageModel.fromJson(m)).toList();
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print("STATUS CODE: ${response.statusCode}");
+
+      if (response.statusCode == 200) {
+        List data = jsonDecode(response.body);
+
+        // This maps the JSON to your MessageModel which now includes:
+        // message, file_url, file_name, message_type, and reactions
+        return data.map((m) => MessageModel.fromJson(m)).toList();
+      } else {
+        print("❌ FAILED TO LOAD MESSAGES: ${response.body}");
+        return []; // Return empty list instead of crashing the UI
+      }
+    } catch (e) {
+      print("⚠️ GET MESSAGES ERROR: $e");
+      return []; // Return empty list on connection error
     }
-    throw Exception("Failed to load messages");
   }
 
   /// ===========================
@@ -358,23 +379,84 @@ class ApiService {
   /// ===========================
 
   // Send Message
-  Future<MessageModel?> sendMessage(int conversationId, String message) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/messages/send'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({
-        "conversation_id": conversationId,
-        "message": message,
-      }),
-    );
+  /// ===========================
+  /// 7.. SEND MESSAGE (UPDATED for Files/Images/Videos)
+  /// ===========================
+  Future<MessageModel?> sendMessage(
+      int conversationId,
+      String? message, {
+        File? file,
+        String type = 'text',
+      }) async {
+    final url = Uri.parse('$baseUrl/messages/send');
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      return MessageModel.fromJson(jsonDecode(response.body));
+    try {
+      // 1. Create Multipart Request
+      var request = http.MultipartRequest('POST', url);
+      print("Send Message");
+
+      // 2. Add Authorization Header
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        // Do NOT set Content-Type here; MultipartRequest sets it automatically
+      });
+
+      // 3. Add Text Fields (All must be Strings)
+      request.fields['conversation_id'] = conversationId.toString();
+      request.fields['message'] = message ?? "";
+      request.fields['message_type'] = type;
+
+      // 4. Attach the File (if one exists)
+      if (file != null) {
+        // We use fromPath to stream the file from disk
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'file', // This MUST match upload.single('file') in your Node.js code
+            file.path,
+            // Automatically detect mime type or use helper
+            contentType: _getMediaType(file.path),
+          ),
+        );
+      }
+
+      // 5. Send and await response
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print("SEND MESSAGE STATUS: ${response.statusCode}");
+      print("SEND MESSAGE BODY: ${response.body}");
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return MessageModel.fromJson(jsonDecode(response.body));
+      } else {
+        return null;
+      }
+    } catch (e) {
+      print("Exception in sendMessage: $e");
+      return null;
     }
-    return null;
+  }
+
+  /// Helper to determine the file type for the backend
+  MediaType? _getMediaType(String filePath) {
+    final extension = filePath.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return MediaType('image', 'jpeg');
+      case 'png':
+        return MediaType('image', 'png');
+      case 'gif':
+        return MediaType('image', 'gif');
+      case 'mp4':
+        return MediaType('video', 'mp4');
+      case 'mov':
+        return MediaType('video', 'quicktime');
+      case 'pdf':
+        return MediaType('application', 'pdf');
+      default:
+        return MediaType('application', 'octet-stream');
+    }
   }
 
   /// ===========================
@@ -571,26 +653,30 @@ class ApiService {
   /// Enroll Api
   Future<Map<String, dynamic>> enrollInCourse(int courseId) async {
     final url = Uri.parse("$baseUrl/courses/enroll");
-    print("📝 ENROLLING IN COURSE: $courseId");
 
     try {
       final response = await http.post(
         url,
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer $token", // Ensure token is set in your service
+          "Authorization": "Bearer $token",
         },
-        body: jsonEncode({
-          "course_id": courseId,
-        }),
+        body: jsonEncode({"course_id": courseId}),
       );
 
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        return {"success": true, "message": data['message'] ?? "Enrolled successfully!"};
+        // Logic for both "New Enrollment" and "Already Enrolled"
+        return {
+          "success": true,
+          "message": data['message'] ?? "Enrolled successfully!"
+        };
       } else {
-        return {"success": false, "message": data['message'] ?? "Failed to enroll."};
+        return {
+          "success": false,
+          "message": data['error'] ?? data['message'] ?? "Failed to enroll."
+        };
       }
     } catch (e) {
       print("❌ ENROLL ERROR: $e");
@@ -1357,6 +1443,7 @@ class ApiService {
     required String title,
     required String description,
     required String level,
+    required String price,
     required String language,
     required File thumbnail,
   }) async {
@@ -1366,8 +1453,8 @@ class ApiService {
     try {
       var request = http.MultipartRequest('POST', url);
 
-      // --- Headers ---
-      // Using your class-level token variable
+       // --- Headers ---
+       // Using your class-level token variable
       request.headers.addAll({
         'Authorization': 'Bearer $token',
         'Accept': 'application/json',
@@ -1378,6 +1465,7 @@ class ApiService {
       request.fields['description'] = description;
       request.fields['level'] = level;
       request.fields['language'] = language;
+      request.fields['price'] = price;
 
       // --- File Field (Optimized) ---
       // Using fromPath is cleaner than manual ByteStreams for local files
@@ -1473,6 +1561,68 @@ class ApiService {
     }
   }
 
+  /// check enrollment
+  Future<bool> checkEnrollment(int courseId) async {
+    final url = Uri.parse("$baseUrl/courses/check-enrollment/$courseId");
+
+    final response = await http.get(
+      url,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $token",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['enrolled'] ?? false;
+    } else {
+      throw Exception("Failed to check enrollment");
+    }
+  }
+
+  Future<bool> markPostAsRead(int postId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/posts/mark-read'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token', // Ensure token is passed
+        },
+        body: jsonEncode({'post_id': postId}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<int> getUserTotalViews(int userId) async {
+    try {
+      final url = Uri.parse("$baseUrl/videos/users/$userId/total-views");
+      final res = await http.get(url);
+      print(url);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        print("API Response: $data"); // Debug
+
+        final totalViewsRaw = data['total_views'];
+
+        // total_views ko int me parse karo
+        if (totalViewsRaw is int) return totalViewsRaw;
+        if (totalViewsRaw is String) return int.tryParse(totalViewsRaw) ?? 0;
+
+        return 0;
+      } else {
+        print("Status Code: ${res.statusCode}");
+        return 0;
+      }
+    } catch (e) {
+      print("Error: $e");
+      return 0;
+    }
+  }
   /// Create reel
   Future<bool> uploadReel({
     required String caption,
@@ -1707,35 +1857,37 @@ class ApiService {
     }
   }
   ///
-  Future<bool> sendJoinRequest({
-    required int projectId,
-    required String message,
-  }) async {
-    final url = Uri.parse('$baseUrl/projects/request');
+    Future<bool> sendJoinRequest({
+      required int projectId,
+      required String message,
+    }) async {
+      final url = Uri.parse('$baseUrl/projects/request');
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          "project_id": projectId,
-          "message": message,
-        }),
-      );
+      print(url);
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        // Success!
-        return true;
-      } else {
-        print("Request failed: ${response.body}");
+      try {
+        final response = await http.post(
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            "project_id": projectId,
+            "message": message,
+          }),
+        );
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          // Success!
+          return true;
+        } else {
+          print("Request failed: ${response.body}");
+          return false;
+        }
+      } catch (e) {
+        print("Error sending request: $e");
         return false;
       }
-    } catch (e) {
-      print("Error sending request: $e");
-      return false;
     }
   }
-}

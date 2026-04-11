@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'dart:ui';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:skillconnect/New/other_person_profile.dart';
 
 import '../Provider/message_provider.dart';
@@ -10,6 +13,7 @@ import '../Services/api-service.dart';
 import 'Constants/constants.dart';
 import 'Model/message_model.dart';
 import 'Services/AppColors.dart';
+import 'Widgets/FullScreen_Class.dart';
 
 class ChatPage extends ConsumerStatefulWidget {
   final String? name;
@@ -33,25 +37,131 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   final List<String> _quickEmojis = ["❤️", "🙌", "🔥", "😮", "😢"];
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _picker = ImagePicker();
 
-  // FIX: Added mounted check to prevent dispose error
+  // --- NEW STATE FOR PREVIEW ---
+  File? _selectedFile;
+  String? _selectedFileType;
+
   void _handleReaction(int messageId, String emoji) async {
-    // 1. Call the API
     final result = await ApiService().toggleReaction(messageId, emoji);
-
-    // 2. FIX: Check if the user is still on this screen before updating
     if (!mounted) return;
-
     if (result != null) {
-      // 3. Use refresh. Combined with skipLoadingOnRefresh below,
-      // this will update the emojis silently without a loading spinner.
       ref.refresh(messagesProvider(widget.conversationId));
     }
   }
 
+  // --- MODIFIED: STAGES MEDIA FOR PREVIEW ---
+  Future<void> _pickMedia(String type) async {
+    try {
+      File? file;
+      if (type == 'image') {
+        final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
+        if (photo != null) file = File(photo.path);
+      } else if (type == 'video') {
+        final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
+        if (video != null) file = File(video.path);
+      } else if (type == 'file') {
+        FilePickerResult? result = await FilePicker.platform.pickFiles();
+        if (result != null) file = File(result.files.single.path!);
+      }
+
+      if (file != null) {
+        setState(() {
+          _selectedFile = file;
+          _selectedFileType = type;
+        });
+      }
+    } catch (e) {
+      debugPrint("Media Pick Error: $e");
+    }
+  }
+
+  // --- NEW: PREVIEW WIDGET ---
+  Widget _buildMediaPreview() {
+    if (_selectedFile == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Stack(
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: _selectedFileType == 'image'
+                    ? Image.file(_selectedFile!, height: 150, width: double.infinity, fit: BoxFit.cover)
+                    : Container(
+                  height: 80,
+                  width: double.infinity,
+                  color: Colors.white10,
+                  child: Icon(
+                    _selectedFileType == 'video' ? Icons.videocam : Icons.insert_drive_file,
+                    color: Colors.white,
+                    size: 40,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            child: GestureDetector(
+              onTap: () => setState(() {
+                _selectedFile = null;
+                _selectedFileType = null;
+              }),
+              child: const CircleAvatar(
+                radius: 12,
+                backgroundColor: Colors.red,
+                child: Icon(Icons.close, size: 16, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAttachmentMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image, color: Colors.white),
+              title: const Text('Image', style: TextStyle(color: Colors.white)),
+              onTap: () { Navigator.pop(context); _pickMedia('image'); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam, color: Colors.white),
+              title: const Text('Video', style: TextStyle(color: Colors.white)),
+              onTap: () { Navigator.pop(context); _pickMedia('video'); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file, color: Colors.white),
+              title: const Text('File', style: TextStyle(color: Colors.white)),
+              onTap: () { Navigator.pop(context); _pickMedia('file'); },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showReactionMenu(Offset tapPosition, int messageId) {
     HapticFeedback.mediumImpact();
-
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.05),
@@ -128,16 +238,29 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     );
   }
 
+  // --- MODIFIED: SENDS TEXT + STAGED FILE ---
   Future<void> _onSendMessage() async {
     final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && _selectedFile == null) return;
+
+    final fileToSend = _selectedFile;
+    final typeToSend = _selectedFileType ?? 'text';
+
     _messageController.clear();
+    setState(() {
+      _selectedFile = null;
+      _selectedFileType = null;
+    });
 
     try {
-      final newMessage = await ApiService().sendMessage(widget.conversationId, text);
+      final newMessage = await ApiService().sendMessage(
+          widget.conversationId,
+          text.isEmpty ? null : text,
+          file: fileToSend,
+          type: typeToSend
+      );
 
-      if (!mounted) return; // FIX: Prevents dispose error
-
+      if (!mounted) return;
       if (newMessage != null) {
         ref.read(messagesProvider(widget.conversationId).notifier).addMessage(newMessage);
         _scrollToBottom();
@@ -184,7 +307,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           children: [
             Expanded(
               child: messagesAsync.when(
-                skipLoadingOnRefresh: true, // FIX: Crucial for smooth reaction updates
+                skipLoadingOnRefresh: true,
                 data: (messages) {
                   if (messages.isEmpty) return const Center(child: Text("Say hello!", style: TextStyle(color: AppColors.textMuted)));
                   return ListView.builder(
@@ -208,6 +331,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 error: (err, _) => Center(child: Text("Error: $err", style: const TextStyle(color: AppColors.error))),
               ),
             ),
+            _buildMediaPreview(), // WHATSAPP PREVIEW SECTION
             _buildModernInput(),
           ],
         ),
@@ -277,7 +401,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               child: Row(
                 children: [
                   const SizedBox(width: 8),
-                  IconButton(onPressed: () {}, icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.textMuted)),
+                  IconButton(
+                      onPressed: _showAttachmentMenu,
+                      icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.textMuted)
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _messageController,
@@ -333,7 +460,9 @@ class ChatBubble extends StatelessWidget {
               children: [
                 Container(
                   margin: const EdgeInsets.symmetric(vertical: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: message.messageType == 'text'
+                      ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+                      : const EdgeInsets.all(4),
                   constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                   decoration: BoxDecoration(
                     gradient: isMe ? AppColors.primaryGradient : null,
@@ -343,7 +472,7 @@ class ChatBubble extends StatelessWidget {
                       bottomLeft: Radius.circular(isMe ? 20 : 4), bottomRight: Radius.circular(isMe ? 4 : 20),
                     ),
                   ),
-                  child: Text(message.message, style: TextStyle(color: isMe ? Colors.white : AppColors.textPrimary)),
+                  child: _buildBubbleContent(context),
                 ),
                 if (message.reactions.isNotEmpty)
                   Positioned(
@@ -361,5 +490,45 @@ class ChatBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildBubbleContent(BuildContext context) {
+    // Inside ChatBubble -> _buildBubbleContent
+    if (message.messageType == 'image') {
+      final String fullImageUrl = "$baseUrlImage${message.fileUrl}";
+
+      return GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FullScreenImage(imageUrl: fullImageUrl),
+            ),
+          );
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Image.network(
+            fullImageUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white),
+          ),
+        ),
+      );
+    }else if (message.messageType == 'video') {
+      return const Column(
+        children: [
+          Icon(Icons.play_circle_fill, size: 50, color: Colors.white),
+          Text("Video Message", style: TextStyle(color: Colors.white, fontSize: 12)),
+        ],
+      );
+    } else if (message.messageType == 'file') {
+      return ListTile(
+        dense: true,
+        leading: const Icon(Icons.insert_drive_file, color: Colors.white),
+        title: Text(message.fileName ?? "Document", style: const TextStyle(color: Colors.white)),
+      );
+    }
+    return Text(message.message ?? "", style: TextStyle(color: isMe ? Colors.white : AppColors.textPrimary));
   }
 }

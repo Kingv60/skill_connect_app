@@ -12,6 +12,7 @@ import 'Model/media_post_model.dart';
 import 'New/My_Post_Media.dart';
 import 'New/VideoPlayfor_course.dart';
 import 'New/edit_page.dart';
+import 'New/reward_page.dart';
 import 'Provider/profile_provider.dart';
 import 'Services/AppColors.dart';
 import 'Services/api-service.dart';
@@ -171,7 +172,25 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
               ),
               actions: [
                 IconButton(icon: Icon(Icons.palette_outlined, color: textColor), onPressed: _showThemeDialog),
+                IconButton(
+                  icon: const Icon(Icons.emoji_events_outlined, color: Colors.amberAccent), // Trophy/Reward icon
+                  onPressed: () {
+                    if (userId != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => RewardPage(userId: userId!), // Pass current userId
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("User ID not loaded yet")),
+                      );
+                    }
+                  },
+                ),
               ],
+
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
                   decoration: BoxDecoration(
@@ -293,6 +312,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> with SingleTickerProv
   }
 
   Widget _buildPostsTab() {
+    if (userId == null) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.blueAccent),
+      );
+    }
     return FutureBuilder<List<dynamic>>(
       // Aapka naya ApiService function jo userId leta hai
       future: ApiService().getPostsByUserId(userId!),

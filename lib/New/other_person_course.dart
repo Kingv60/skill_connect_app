@@ -92,13 +92,21 @@ class OtherCourseListItem extends StatelessWidget {
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
         // Entire card is now the trigger for navigation
+        // Inside OtherCourseListItem widget in UserCoursesScreen.dart
         onTap: () {
+          // 1. Create a copy of the profile so we don't mess up the original data
+          Map<String, dynamic> enrichedProfile = Map<String, dynamic>.from(profile);
+
+          // 2. IMPORTANT: Put the course_id from the list item into this map
+          enrichedProfile['course_id'] = course['course_id'];
+
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => OtherUserVideosPage(
-                otherUserProfile: profile, // Passing profile as requested
-                userId: course['course_id'], // Ensure this matches the parameter name in your target page
+                otherUserProfile: enrichedProfile, // Now this contains 'course_id'
+                userId: course['course_id'],
+                price: course['price'],
               ),
             ),
           );

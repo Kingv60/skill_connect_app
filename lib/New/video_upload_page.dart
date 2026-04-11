@@ -36,6 +36,7 @@ class _UploadMediaPageState extends State<UploadMediaPage> {
   final _courseDescController = TextEditingController();
   final _levelController = TextEditingController();
   final _langController = TextEditingController();
+  final _priceController = TextEditingController();
 
   @override
   void initState() {
@@ -51,6 +52,7 @@ class _UploadMediaPageState extends State<UploadMediaPage> {
     _courseDescController.dispose();
     _levelController.dispose();
     _langController.dispose();
+    _priceController.dispose();
     super.dispose();
   }
 
@@ -96,32 +98,20 @@ class _UploadMediaPageState extends State<UploadMediaPage> {
   }
 
   void _handlePublish() async {
-    // Trim controllers to avoid whitespace-only titles passing validation
+    // 1. Capture and trim values
     final vTitle = _videoTitleController.text.trim();
+    final vDesc = _videoDescController.text.trim();
     final cTitle = _courseTitleController.text.trim();
+    final cDesc = _courseDescController.text.trim();
 
+    // 2. Validation Logic
     if (_selectedType == UploadType.video) {
-      if (_videoFile == null) {
-        _showSnackBar("Please select a video file.");
-        return;
-      }
-      if (_videoThumbFile == null) {
-        _showSnackBar("Please upload a video cover (thumbnail).");
-        return;
-      }
-      if (vTitle.isEmpty) {
-        _showSnackBar("Please enter a video title.");
-        return;
-      }
+      if (_videoFile == null) return _showSnackBar("Please select a video file.");
+      if (_videoThumbFile == null) return _showSnackBar("Please upload a video cover.");
+      if (vTitle.isEmpty) return _showSnackBar("Please enter a video title.");
     } else {
-      if (_thumbFile == null) {
-        _showSnackBar("Please upload a course thumbnail.");
-        return;
-      }
-      if (cTitle.isEmpty) {
-        _showSnackBar("Please enter a course title.");
-        return;
-      }
+      if (_thumbFile == null) return _showSnackBar("Please upload a course thumbnail.");
+      if (cTitle.isEmpty) return _showSnackBar("Please enter a course title.");
     }
 
     setState(() => _isLoading = true);
@@ -129,21 +119,34 @@ class _UploadMediaPageState extends State<UploadMediaPage> {
 
     try {
       if (_selectedType == UploadType.course) {
+        // --- UPLOAD COURSE ---
         success = await ApiService().createCourse(
           title: cTitle,
-          description: _courseDescController.text.trim(),
+          description: cDesc,
           level: _levelController.text.isEmpty ? "Beginner" : _levelController.text.trim(),
           language: _langController.text.isEmpty ? "English" : _langController.text.trim(),
+          price: _priceController.text.isEmpty ? "0" : _priceController.text.trim(),
           thumbnail: _thumbFile!,
         );
       } else {
+        // --- UPLOAD VIDEO ---
+        // IMPORTANT: Ensure you have a 'uploadVideo' method in ApiService.
+        // Do NOT use createCourse here.
+        // Inside _handlePublish -> else branch (UploadType.video)
         success = await ApiService().uploadVideo(
+          courseId: _selectedCourseId ?? "0",
+          title: vTitle,
+          description: vDesc,
           videoFile: _videoFile!,
           thumbnailFile: _videoThumbFile!,
-          title: vTitle,
-          description: _videoDescController.text.isEmpty ? "No description" : _videoDescController.text.trim(),
-          courseId: _selectedCourseId ?? "0",
-          onProgress: (p) => setState(() => _uploadProgress = p),
+          onProgress: (double progress) {
+            // This ensures the progress bar moves!
+            if (mounted) {
+              setState(() {
+                _uploadProgress = progress;
+              });
+            }
+          },
         );
       }
 
@@ -151,14 +154,14 @@ class _UploadMediaPageState extends State<UploadMediaPage> {
         _showSnackBar("Published successfully!");
         Future.delayed(const Duration(milliseconds: 600), () => Navigator.pop(context, true));
       } else if (mounted) {
-        _showSnackBar("Server error. Please try again.");
+        _showSnackBar("Server rejected the request.");
       }
     } catch (e) {
-      debugPrint("Error: $e");
-      if (mounted) _showSnackBar("An error occurred.");
+      debugPrint("Final Catch Error: $e");
+      if (mounted) _showSnackBar("Error: ${e.toString()}");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    if (mounted) setState(() => _isLoading = false);
   }
 
   void _showSnackBar(String msg) {
@@ -300,6 +303,10 @@ class _UploadMediaPageState extends State<UploadMediaPage> {
             Expanded(child: _buildTextField(_langController, "Language", 1)),
           ],
         ),
+
+        const SizedBox(height: 15),
+
+        _buildTextField(_priceController, "Course Price (₹)", 1),
       ],
     );
   }
